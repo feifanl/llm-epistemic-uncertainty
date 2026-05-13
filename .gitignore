@@ -1,5 +1,13 @@
+__pycache__/
+.cache/
+
+.env
+
 # Docs
 docs/
 
-# Helpers
-dataset_viewer.html
+# Activations
+activations/
+
+# Venv
+venv/
