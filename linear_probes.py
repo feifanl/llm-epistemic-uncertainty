@@ -194,7 +194,7 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
     out = out_dir / f"probe_{args.point}_{mode}.csv"
     df.to_csv(out, index=False)
-    print(f"\nSaved → {out}")
+    print(f"\nSaved -> {out}")
 
 
 if __name__ == "__main__":

@@ -60,7 +60,7 @@ def curve_and_heatmap(csv):
     fig.tight_layout()
     out = out_dir / f"{csv.stem}_curve.png"
     fig.savefig(out, dpi=150); plt.close(fig)
-    print(f"Saved → {out}")
+    print(f"Saved -> {out}")
 
     # --- heatmap layer × pos, one panel per direction (test acc) ---
     layers = sorted(df["layer"].unique())
@@ -80,7 +80,7 @@ def curve_and_heatmap(csv):
     fig.tight_layout()
     out = out_dir / f"{csv.stem}_heatmap.png"
     fig.savefig(out, dpi=150); plt.close(fig)
-    print(f"Saved → {out}")
+    print(f"Saved -> {out}")
 
 
 def compare(csvs, metric, pos, out):
@@ -100,7 +100,7 @@ def compare(csvs, metric, pos, out):
     ax.legend(fontsize=8)
     fig.tight_layout()
     fig.savefig(out, dpi=150); plt.close(fig)
-    print(f"Saved → {out}")
+    print(f"Saved -> {out}")
 
 
 def main():

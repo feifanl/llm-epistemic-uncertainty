@@ -83,7 +83,7 @@ def plot_pos(acts, point, pos, layers, meta, out=None):
         out = pca_dir / f"pca_{point}_pos{pos}.png"
     fig.savefig(out, dpi=150, bbox_inches="tight")
     plt.close(fig)
-    print(f"Saved → {out}")
+    print(f"Saved -> {out}")
 
 
 def main():
