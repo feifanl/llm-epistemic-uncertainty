@@ -72,7 +72,10 @@ def plot_pos(acts, point, pos, layers, meta, out=None):
                  fontsize=13, y=1.00)
     fig.tight_layout()
 
-    out = out or acts / f"pca_{point}_pos{pos}.png"
+    if out is None:
+        pca_dir = acts / "pca"
+        pca_dir.mkdir(exist_ok=True)
+        out = pca_dir / f"pca_{point}_pos{pos}.png"
     fig.savefig(out, dpi=150, bbox_inches="tight")
     plt.close(fig)
     print(f"Saved → {out}")
