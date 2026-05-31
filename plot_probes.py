@@ -37,6 +37,7 @@ def curve_and_heatmap(csv, out_dir):
     dirs = directions(df)
     positions = sorted(df["pos"].unique())
     last_pos = positions[-1]   # readout token
+    model = csv.parent.parent.name   # activations/{model}/probes/probe_*.csv
 
     # --- layer curve at the readout position ---
     fig, ax = plt.subplots(figsize=(7, 5))
@@ -48,7 +49,7 @@ def curve_and_heatmap(csv, out_dir):
     ax.axhline(0.5, color="gray", ls=":", lw=1, label="chance")
     ax.set_xlabel("layer"); ax.set_ylabel("accuracy")
     ax.set_ylim(0.4, 1.02)
-    ax.set_title(f"{csv.stem} — pos={last_pos}")
+    ax.set_title(f"{model} | {csv.stem} — pos={last_pos}")
     ax.legend(fontsize=8)
     fig.tight_layout()
     out = out_dir / f"{csv.stem}_curve.png"
@@ -69,7 +70,7 @@ def curve_and_heatmap(csv, out_dir):
         ax.set_xlabel("layer"); ax.set_ylabel("pos")
         ax.set_title(f"{d}_test")
         fig.colorbar(im, ax=ax, fraction=0.046)
-    fig.suptitle(f"{csv.stem} — accuracy heatmap")
+    fig.suptitle(f"{model} | {csv.stem} — accuracy heatmap")
     fig.tight_layout()
     out = out_dir / f"{csv.stem}_heatmap.png"
     fig.savefig(out, dpi=150); plt.close(fig)
