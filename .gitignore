@@ -6,8 +6,5 @@ __pycache__/
 # Docs
 docs/
 
-# Activations
-activations/
-
 # Venv
 venv/
