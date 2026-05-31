@@ -14,7 +14,7 @@ Two uses:
   by file. Use for point (resid/attn/mlp) or model (2b/9b/9b-it) comparison.
 
 Usage:
-    python plot_probes.py --csv activations/gemma-2-9b-it/probes/probe_resid_transfer.csv
+    python plot_probes.py --csv probe_results/gemma-2-9b-it/probe_resid_transfer.csv
     python plot_probes.py --csv .../probe_resid_transfer.csv .../probe_attn_transfer.csv \
                           --metric p2f_test --pos 4
 """
@@ -31,13 +31,19 @@ def directions(df):
     return [c[:-5] for c in df.columns if c.endswith("_test")]
 
 
-def curve_and_heatmap(csv, out_dir):
-    """Single-CSV analysis: layer curve (best pos) + per-direction heatmap."""
+def curve_and_heatmap(csv):
+    """Single-CSV analysis: layer curve (best pos) + per-direction heatmap.
+
+    Writes to {repo}/plots/probes/{model}/{stem}_{curve,heatmap}.png.
+    """
     df = pd.read_csv(csv)
     dirs = directions(df)
     positions = sorted(df["pos"].unique())
     last_pos = positions[-1]   # readout token
-    model = csv.parent.parent.name   # activations/{model}/probes/probe_*.csv
+    model = csv.parent.name               # probe_results/{model}/probe_*.csv
+    root = csv.parent.parent.parent       # repo root
+    out_dir = root / "plots" / "probes" / model
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     # --- layer curve at the readout position ---
     fig, ax = plt.subplots(figsize=(7, 5))
@@ -109,13 +115,19 @@ def main():
     args = p.parse_args()
 
     if len(args.csv) == 1:
-        csv = args.csv[0]
-        curve_and_heatmap(csv, csv.parent)
+        curve_and_heatmap(args.csv[0])
     else:
         pos = args.pos
         if pos is None:
             pos = int(sorted(pd.read_csv(args.csv[0])["pos"].unique())[-1])
-        out = args.out or Path(f"compare_{args.metric}_pos{pos}.png")
+        if args.out is None:
+            # repo root from first csv: probe_results/{model}/x.csv
+            root = args.csv[0].parent.parent.parent
+            cmp_dir = root / "plots" / "probes"
+            cmp_dir.mkdir(parents=True, exist_ok=True)
+            out = cmp_dir / f"compare_{args.metric}_pos{pos}.png"
+        else:
+            out = args.out
         compare(args.csv, args.metric, pos, out)
 
 

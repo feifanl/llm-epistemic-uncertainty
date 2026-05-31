@@ -33,7 +33,12 @@ def pick_layers(acts, point, layers):
 
 
 def plot_pos(acts, point, pos, layers, meta, out=None):
-    """One PCA-grid PNG for a single token position."""
+    """One PCA-grid PNG for a single token position.
+
+    Writes to {repo}/plots/pca/{model}_pca_{point}_pos{pos}.png by default.
+    """
+    model = acts.name                       # activations/{model}/
+    root = acts.parent.parent               # repo root
     n = len(layers)
     cols = 4
     rows = (n + cols - 1) // cols
@@ -68,13 +73,13 @@ def plot_pos(acts, point, pos, layers, meta, out=None):
     fig.legend(handles=handles, loc="lower center", ncol=4,
                bbox_to_anchor=(0.5, -0.01), fontsize=10)
 
-    fig.suptitle(f"PCA per layer — {acts.name} | {point} | pos={pos}",
+    fig.suptitle(f"PCA per layer — {model} | {point} | pos={pos}",
                  fontsize=13, y=1.00)
     fig.tight_layout()
 
     if out is None:
-        pca_dir = acts / "pca"
-        pca_dir.mkdir(exist_ok=True)
+        pca_dir = root / "plots" / "pca" / model
+        pca_dir.mkdir(parents=True, exist_ok=True)
         out = pca_dir / f"pca_{point}_pos{pos}.png"
     fig.savefig(out, dpi=150, bbox_inches="tight")
     plt.close(fig)

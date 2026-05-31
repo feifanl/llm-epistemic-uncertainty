@@ -187,8 +187,11 @@ def main():
 
     df = run(args.acts, args.point, positions, meta, mode, **kw)
 
-    out_dir = args.acts / "probes"
-    out_dir.mkdir(exist_ok=True)
+    # write to {repo}/probe_results/{model}/probe_{point}_{mode}.csv
+    model = args.acts.name              # activations/{model}/
+    root = args.acts.parent.parent      # repo root
+    out_dir = root / "probe_results" / model
+    out_dir.mkdir(parents=True, exist_ok=True)
     out = out_dir / f"probe_{args.point}_{mode}.csv"
     df.to_csv(out, index=False)
     print(f"\nSaved → {out}")
