@@ -62,7 +62,9 @@ def main():
     args = ap.parse_args()
 
     t = expand(pd.read_csv(args.dataset))
-    X, y = t["text"].values, t["label"].values
+    # plain object ndarray: pyarrow-backed string cols break sklearn indexing
+    X = np.asarray(t["text"].tolist(), dtype=object)
+    y = t["label"].to_numpy()
 
     # --- split-mode per-prompt prob via 5-fold out-of-fold prediction ---
     t["prob_split"] = cross_val_predict(model(), X, y, cv=5, method="predict_proba")[:, 1]

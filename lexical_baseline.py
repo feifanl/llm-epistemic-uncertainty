@@ -54,7 +54,8 @@ def make_model():
 
 def split_eval(t):
     """Random 80/20 (seed 0, matches linear_probes) + 5-fold CV error bar."""
-    X, y = t["text"].values, t["label"].values
+    X = np.asarray(t["text"].tolist(), dtype=object)   # pyarrow-safe
+    y = t["label"].to_numpy()
     rng = np.random.default_rng(0)
     perm = rng.permutation(len(y))
     cut = int(0.8 * len(y))
@@ -67,7 +68,8 @@ def split_eval(t):
 
 def transfer_eval(t):
     """Train one time-half, test the other. p2f and f2p."""
-    X, y = t["text"].values, t["label"].values
+    X = np.asarray(t["text"].tolist(), dtype=object)   # pyarrow-safe
+    y = t["label"].to_numpy()
     time = t["cell"].str.split("_").str[0].values
     past, future = time == "past", time == "future"
     out = {}
