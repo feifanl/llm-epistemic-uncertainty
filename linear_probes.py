@@ -123,19 +123,29 @@ def make_masks(meta, mode):
     return [("split", tr, ~tr)], y
 
 
-def fit_eval(X, y, tr, te, **kw):
-    """Standardize on train, fit probe, return (train_acc, test_acc)."""
+def fit_eval(X, y, tr, te, want_preds=False, **kw):
+    """Standardize on train, fit probe, return (train_acc, test_acc).
+    If want_preds, also return (score, pred) arrays for the TEST rows."""
     Xtr, Xte = standardize(X[tr], X[te])
     w, b = train_logreg(Xtr, y[tr], **kw)
-    return accuracy(Xtr, y[tr], w, b), accuracy(Xte, y[te], w, b)
+    tr_acc = accuracy(Xtr, y[tr], w, b)
+    te_acc = accuracy(Xte, y[te], w, b)
+    if not want_preds:
+        return tr_acc, te_acc
+    score = sigmoid(Xte @ w + b)            # P(known) per test row
+    return tr_acc, te_acc, score, (score > 0.5).astype(int)
 
 
 # ---------- experiments ----------
 
-def run(acts_dir, point, positions, meta, mode, **kw):
+def run(acts_dir, point, positions, meta, mode, dump_preds=False, **kw):
     """
     Train a probe for every (layer, pos) cell. Return DataFrame of results.
     Transfer mode evaluates both directions (p2f, f2p) per cell, side by side.
+
+    If dump_preds, also return a long per-prompt DataFrame (one row per
+    test prompt × layer × pos × direction) joined to meta for easy/hard
+    subset analysis. Returns (results_df, preds_df) in that case.
     """
     directions, y = make_masks(meta, mode)
     layers = discover_layers(acts_dir, point)
@@ -143,6 +153,7 @@ def run(acts_dir, point, positions, meta, mode, **kw):
           f"× {len(directions)} dir")
 
     rows = []
+    pred_rows = []
     for layer in layers:
         T = load_tensor(acts_dir, layer, point)   # [N, n_pos, D]
         for pos in positions:
@@ -150,14 +161,32 @@ def run(acts_dir, point, positions, meta, mode, **kw):
             X = T[:, idx, :]
             row = {"layer": layer, "pos": idx}
             for name, tr, te in directions:
-                tr_acc, te_acc = fit_eval(X, y, tr, te, **kw)
+                if dump_preds:
+                    tr_acc, te_acc, score, pred = fit_eval(
+                        X, y, tr, te, want_preds=True, **kw)
+                    te_pos = np.where(te)[0]               # row indices into meta
+                    m = meta.iloc[te_pos]
+                    pred_rows.append(pd.DataFrame({
+                        "layer": layer, "pos": idx, "direction": name,
+                        "item_idx": m["item_idx"].values,
+                        "cell": m["cell"].values,
+                        "paraphrase_id": m["paraphrase_id"].values,
+                        "label": y[te],
+                        "score": score, "pred": pred,
+                        "correct": (pred == y[te]).astype(int),
+                    }))
+                else:
+                    tr_acc, te_acc = fit_eval(X, y, tr, te, **kw)
                 row[f"{name}_train"] = tr_acc
                 row[f"{name}_test"] = te_acc
             rows.append(row)
             summary = "  ".join(f"{n}_test {row[f'{n}_test']:.3f}"
                                 for n, _, _ in directions)
             print(f"  L{layer:<2d} pos{idx}  {summary}")
-    return pd.DataFrame(rows)
+    results = pd.DataFrame(rows)
+    if dump_preds:
+        return results, pd.concat(pred_rows, ignore_index=True)
+    return results
 
 
 def main():
@@ -169,6 +198,8 @@ def main():
                    help="Sweep every cached position instead of just --pos")
     p.add_argument("--transfer", action="store_true",
                    help="Cross-time transfer instead of in-distribution split")
+    p.add_argument("--dump-preds", action="store_true",
+                   help="Also write per-prompt predictions for easy/hard analysis")
     p.add_argument("--lr", type=float, default=0.1)
     p.add_argument("--epochs", type=int, default=300)
     p.add_argument("--l2", type=float, default=1e-3)
@@ -185,7 +216,9 @@ def main():
     else:
         positions = [args.pos]
 
-    df = run(args.acts, args.point, positions, meta, mode, **kw)
+    result = run(args.acts, args.point, positions, meta, mode,
+                 dump_preds=args.dump_preds, **kw)
+    df, preds = result if args.dump_preds else (result, None)
 
     # write to {repo}/probe_results/{model}/probe_{point}_{mode}.csv
     model = args.acts.name              # activations/{model}/
@@ -195,6 +228,11 @@ def main():
     out = out_dir / f"probe_{args.point}_{mode}.csv"
     df.to_csv(out, index=False)
     print(f"\nSaved -> {out}")
+
+    if preds is not None:
+        pout = out_dir / f"perprompt_{args.point}_{mode}.csv"
+        preds.to_csv(pout, index=False)
+        print(f"Saved per-prompt -> {pout}")
 
 
 if __name__ == "__main__":
