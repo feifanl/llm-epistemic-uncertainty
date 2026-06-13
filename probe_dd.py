@@ -117,7 +117,7 @@ def dd_claim(claim, label, scorer):
     def interesting(subset):
         if not subset:
             return False
-        return scorer.score(" ".join(subset)) == ref_pred  # pred match
+        return int(scorer.score(" ".join(subset)) > 0.5) == ref_pred  # pred match
 
     # delta_debug asserts the full input is interesting; guaranteed above.
     minimal = delta_debug(interesting, words)
