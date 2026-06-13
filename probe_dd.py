@@ -182,6 +182,8 @@ def main():
                    help="Score degenerate inputs to check for default-known bias, then exit")
     p.add_argument("--repro", action="store_true",
                    help="Check live forward pass reproduces cached activations, then exit")
+    p.add_argument("--probe-report", action="store_true",
+                   help="Print probe score distribution per cell over cached acts, then exit")
     # probe hyperparams (match linear_probes defaults)
     p.add_argument("--lr", type=float, default=0.1)
     p.add_argument("--epochs", type=int, default=300)
@@ -199,6 +201,20 @@ def main():
     T = load_tensor(args.acts, args.layer, args.point)   # [N, n_pos, D]
     X = T[:, idx, :]
     probe = FrozenProbe(X, y, lr=args.lr, epochs=args.epochs, l2=args.l2)
+
+    if args.probe_report:
+        # Score every cached row; show distribution per cell. Reveals whether
+        # the probe separates known/unknown and how saturated (0/1 vs graded).
+        ps = np.array([probe.score(X[i]) for i in range(len(X))])
+        meta2 = meta.assign(p=ps)
+        print("\n--- probe score distribution per cell (cached) ---")
+        print(f"{'cell':<16}{'n':>4}{'mean_p':>9}{'min':>7}{'max':>7}{'%>.5':>7}")
+        for cell, g in meta2.groupby("cell"):
+            print(f"{cell:<16}{len(g):>4}{g.p.mean():>9.3f}"
+                  f"{g.p.min():>7.3f}{g.p.max():>7.3f}{(g.p > 0.5).mean()*100:>6.0f}%")
+        frac_extreme = ((ps < 0.01) | (ps > 0.99)).mean()
+        print(f"--- {frac_extreme*100:.0f}% of scores are saturated (<.01 or >.99) ---")
+        return
 
     # --- load model for scoring reduced prompts ---
     print(f"Loading {args.model} ({args.dtype}) for forward-pass scoring...")
