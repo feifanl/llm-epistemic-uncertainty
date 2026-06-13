@@ -100,6 +100,19 @@ def negate(text):
     return f"It is not the case that {text[0].lower() + text[1:]}"
 
 
+def diagnose(scorer):
+    """Score content-free / degenerate inputs. If these come back 'known' with
+    high confidence, the probe has a default bias and label-preserving ddmin is
+    uninformative (it will trivially collapse any known claim to one word)."""
+    probes = ["", "the", "a thing happened", "xyzzy qwerty",
+              "asdf asdf asdf", "Something is true.", "Nothing is known."]
+    print("\n--- degenerate-input diagnostic ---")
+    for t in probes:
+        p = scorer.score(t)
+        print(f"  p(known)={p:.3f} pred={int(p > 0.5)}  \"{t}\"")
+    print("--- (high p on empty/gibberish => default-known bias) ---")
+
+
 # ---------- per-claim delta debug ----------
 
 def dd_claim(claim, label, scorer):
@@ -161,6 +174,8 @@ def main():
     # ablation modes
     p.add_argument("--strip-years", action="store_true")
     p.add_argument("--negate", action="store_true")
+    p.add_argument("--diagnose", action="store_true",
+                   help="Score degenerate inputs to check for default-known bias, then exit")
     # probe hyperparams (match linear_probes defaults)
     p.add_argument("--lr", type=float, default=0.1)
     p.add_argument("--epochs", type=int, default=300)
@@ -190,6 +205,12 @@ def main():
 
     scorer = Scorer(model, tok, buf, n_layers, n_pos, device,
                     args.layer, args.point, idx, probe)
+
+    if args.diagnose:
+        diagnose(scorer)
+        for h in handles:
+            h.remove()
+        return
 
     # --- targets ---
     df = pd.read_csv(args.dataset)
