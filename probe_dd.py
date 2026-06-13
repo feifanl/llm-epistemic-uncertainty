@@ -79,11 +79,15 @@ class Scorer:
         self.layer, self.point, self.idx, self.probe = layer, point, idx, probe
         self.trace = []   # (claim, p_known, pred) for every call
 
-    def score(self, claim):
+    def vec(self, claim):
+        """Live raw activation [D] for a claim (the vector the probe scores)."""
         prompt = PROMPT_TEMPLATE.format(claim=claim)
         out = run_batch(self.model, self.tok, [prompt], self.buf,
                         self.n_layers, self.n_pos, self.device)
-        x = out[(self.layer, self.point)][0, self.idx, :].numpy()
+        return out[(self.layer, self.point)][0, self.idx, :].numpy()
+
+    def score(self, claim):
+        x = self.vec(claim)
         p = self.probe.score(x)
         self.trace.append((claim, p, int(p > 0.5)))
         return p
@@ -176,6 +180,8 @@ def main():
     p.add_argument("--negate", action="store_true")
     p.add_argument("--diagnose", action="store_true",
                    help="Score degenerate inputs to check for default-known bias, then exit")
+    p.add_argument("--repro", action="store_true",
+                   help="Check live forward pass reproduces cached activations, then exit")
     # probe hyperparams (match linear_probes defaults)
     p.add_argument("--lr", type=float, default=0.1)
     p.add_argument("--epochs", type=int, default=300)
@@ -208,6 +214,24 @@ def main():
 
     if args.diagnose:
         diagnose(scorer)
+        for h in handles:
+            h.remove()
+        return
+
+    if args.repro:
+        # Does the live forward pass reproduce the cached activation it trained on?
+        # X[i] is the cached vec for meta row i (PROMPT_TEMPLATE over meta.text[i]).
+        print("\n--- live-vs-cached reproduction ---")
+        for i in range(min(5, len(meta))):
+            text = meta.iloc[i]["text"]
+            cached = X[i]
+            live = scorer.vec(text)
+            l2 = float(np.linalg.norm(cached - live))
+            cos = float(cached @ live / (np.linalg.norm(cached) * np.linalg.norm(live) + 1e-9))
+            print(f"  row {i} [{meta.iloc[i]['cell']}]  "
+                  f"L2={l2:.3f} cos={cos:.4f}  "
+                  f"p_cached={probe.score(cached):.3f} p_live={probe.score(live):.3f}")
+        print("--- (cos~1.0, small L2 => live matches; divergence => scoring-path bug) ---")
         for h in handles:
             h.remove()
         return
