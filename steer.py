@@ -97,14 +97,16 @@ class Steerer:
 
 def build_input(tok, question, device):
     msgs = [{"role": "user", "content": question}]
-    ids = tok.apply_chat_template(msgs, add_generation_prompt=True,
+    enc = tok.apply_chat_template(msgs, add_generation_prompt=True,
                                   return_tensors="pt")
-    return ids.to(device)
+    if not torch.is_tensor(enc):          # newer transformers returns a dict
+        enc = enc["input_ids"]
+    return enc.to(device)
 
 
 @torch.no_grad()
 def generate(model, tok, ids, max_new):
-    out = model.generate(ids, max_new_tokens=max_new, do_sample=False,
+    out = model.generate(input_ids=ids, max_new_tokens=max_new, do_sample=False,
                          pad_token_id=tok.pad_token_id)
     return tok.decode(out[0, ids.shape[1]:], skip_special_tokens=True).strip()
 
