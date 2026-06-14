@@ -51,6 +51,11 @@ HEDGE_WORDS = [
     "might", "may", "could", "possibly", "perhaps", "likely", "unlikely",
     "uncertain", "unclear", "depends", "hard to say", "not sure", "i'm not",
     "cannot be certain", "no way to know", "difficult to predict", "speculative",
+    # denial / epistemic-doubt register the steered model actually emits:
+    "no single", "no definitive", "no consensus", "no clear", "no evidence",
+    "myth", "impossible to predict", "can't predict", "cannot predict",
+    "no straightforward", "complex", "controversial", "not a singular",
+    "oversimplification", "no scientific consensus",
 ]
 
 
