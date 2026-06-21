@@ -11,3 +11,5 @@ venv/
 
 # Cached activation tensors (large, cache_activations.py regenerates)
 activations/
+
+.claude
