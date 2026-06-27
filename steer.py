@@ -20,9 +20,19 @@ the same point the probe reads.
 Note: greedy decoding (do_sample=False) so any output change is attributable to
 the steering vector, not sampling noise.
 
+Ablation (the necessity test, complementary to steering's sufficiency): instead
+of adding the direction, remove the residual's component along it and watch
+whether the model loses its known/unknown stance. Run on the dataset's own
+prompts (--prompts), where the model has a natural confidence level to lose.
+
 Usage:
+    # steering (sufficiency)
     python steer.py --acts activations/gemma-2-9b-it/ --model google/gemma-2-9b-it \
         --layer 20 --point resid --pos -1 --alphas -8 -4 0 4 8
+
+    # ablation (necessity); 0=baseline, 1=full mean-ablation
+    python steer.py --acts activations/gemma-2-9b-it/ --model google/gemma-2-9b-it \
+        --layer 20 --point resid --pos -1 --mode ablate --prompts unknown_qs.txt
 """
 import argparse
 import json
@@ -79,11 +89,25 @@ def steering_vector(X, y, method):
 # ---------- steering hook ----------
 
 class Steerer:
-    """Adds alpha * v to one decoder layer's output residual, all positions."""
+    """Hook on one decoder layer's output residual, all positions.
 
-    def __init__(self, model, layer_idx, v, device, dtype):
+    mode="add":    hs += alpha * v                      (steering / injection)
+    mode="ablate": removes the hs component along v_hat  (causal necessity test)
+        zero-ablation: hs -= alpha * (hs.v_hat) v_hat
+        mean-ablation: hs -= alpha * (hs.v_hat - mbar) v_hat   (on-distribution;
+            replaces the projection with its dataset mean instead of zero, so the
+            residual stays on the manifold the model expects)
+    alpha=0 is baseline (no-op) in both modes; alpha=1 = full ablation.
+    """
+
+    def __init__(self, model, layer_idx, v, device, dtype,
+                 mode="add", ablate_kind="mean", mbar=0.0):
         self.layer = model.model.layers[layer_idx]
         self.v = torch.tensor(v, device=device, dtype=dtype)
+        self.vhat = self.v / self.v.norm()
+        self.mbar = float(mbar)
+        self.mode = mode
+        self.ablate_kind = ablate_kind
         self.alpha = 0.0
         self.handle = self.layer.register_forward_hook(self._hook)
 
@@ -91,7 +115,12 @@ class Steerer:
         if self.alpha == 0.0:
             return out
         hs = out[0] if isinstance(out, tuple) else out
-        hs = hs + self.alpha * self.v
+        if self.mode == "add":
+            hs = hs + self.alpha * self.v
+        else:  # ablate
+            proj = (hs * self.vhat).sum(-1, keepdim=True)        # hs . v_hat
+            target = self.mbar if self.ablate_kind == "mean" else 0.0
+            hs = hs - self.alpha * (proj - target) * self.vhat
         return (hs, *out[1:]) if isinstance(out, tuple) else hs
 
     def remove(self):
@@ -131,13 +160,22 @@ def main():
     p.add_argument("--point", default="resid", choices=["resid", "attn", "mlp"])
     p.add_argument("--pos", type=int, default=-1)
     p.add_argument("--method", default="diffmean", choices=["diffmean", "probe"])
-    p.add_argument("--alphas", type=float, nargs="+",
-                   default=[-8, -4, 0, 4, 8])
+    p.add_argument("--mode", default="add", choices=["add", "ablate"],
+                   help="add=inject direction (sufficiency); ablate=remove it "
+                        "(necessity)")
+    p.add_argument("--ablate-kind", default="mean", choices=["mean", "zero"],
+                   help="mean=replace v-projection with dataset mean (on-manifold);"
+                        " zero=project the direction out entirely")
+    p.add_argument("--alphas", type=float, nargs="+", default=None,
+                   help="add mode: steering scalars (default -8..8). ablate mode: "
+                        "ablation strength, 1=full (default 0 1)")
     p.add_argument("--max-new-tokens", type=int, default=80)
     p.add_argument("--dtype", choices=["fp16", "bf16"], default="bf16")
     p.add_argument("--prompts", type=Path, default=None,
                    help="Optional text file, one neutral question per line")
     args = p.parse_args()
+    if args.alphas is None:
+        args.alphas = [0.0, 1.0] if args.mode == "ablate" else [-8, -4, 0, 4, 8]
 
     cfg = json.loads((args.acts / "config.json").read_text())
     n_pos = cfg.get("n_pos", 5)
@@ -148,7 +186,13 @@ def main():
     y = meta["label"].values.astype(int)
     X = load_tensor(args.acts, args.layer, args.point)[:, idx, :]
     v, info = steering_vector(X, y, args.method)
+    # mean projection onto v_hat across the dataset -> on-manifold ablation target
+    vhat = v / np.linalg.norm(v)
+    mbar = float((X @ vhat).mean())
     print(f"Steering vector: {info}  (layer={args.layer} {args.point} pos={idx})")
+    print(f"Mode: {args.mode}"
+          + (f" ({args.ablate_kind}-ablation, mbar={mbar:.2f})"
+             if args.mode == "ablate" else ""))
 
     # --- model ---
     print(f"Loading {args.model} ({args.dtype})...")
@@ -158,7 +202,8 @@ def main():
     device = next(model.parameters()).device
     dtype = next(model.parameters()).dtype
 
-    steerer = Steerer(model, args.layer, v, device, dtype)
+    steerer = Steerer(model, args.layer, v, device, dtype,
+                      mode=args.mode, ablate_kind=args.ablate_kind, mbar=mbar)
 
     prompts = (args.prompts.read_text().splitlines() if args.prompts
                else DEFAULT_PROMPTS)
@@ -172,15 +217,22 @@ def main():
             steerer.alpha = float(a)
             text = generate(model, tok, ids, args.max_new_tokens)
             hc = hedge_count(text)
-            tag = "(baseline)" if a == 0 else ("(->known)" if a > 0 else "(->unknown)")
+            if a == 0:
+                tag = "(baseline)"
+            elif args.mode == "ablate":
+                tag = "(ablated)" if a == 1 else f"(ablate x{a:g})"
+            else:
+                tag = "(->known)" if a > 0 else "(->unknown)"
             print(f"\n  alpha={a:+.0f} {tag}  hedges={hc}\n  {text}")
-            rows.append({"question": q, "alpha": a, "hedges": hc, "text": text})
+            rows.append({"question": q, "mode": args.mode, "alpha": a,
+                         "hedges": hc, "text": text})
     steerer.alpha = 0.0
     steerer.remove()
 
     out_dir = args.acts.parent.parent / "probe_results" / args.acts.name
     out_dir.mkdir(parents=True, exist_ok=True)
-    out = out_dir / f"steer_{args.method}_{args.point}_L{args.layer}.csv"
+    suffix = args.mode + (f"_{args.ablate_kind}" if args.mode == "ablate" else "")
+    out = out_dir / f"steer_{suffix}_{args.method}_{args.point}_L{args.layer}.csv"
     pd.DataFrame(rows).to_csv(out, index=False)
     print(f"\nSaved -> {out}")
 
