@@ -157,6 +157,11 @@ def main():
     p.add_argument("--acts", type=Path, required=True)
     p.add_argument("--model", required=True)
     p.add_argument("--layer", type=int, default=20)
+    p.add_argument("--layers", type=int, nargs="+", default=None,
+                   help="ablate mode only: ablate a PER-LAYER diffmean at each of "
+                        "these layers (e.g. --layers 12 13 .. 26). Single-site "
+                        "ablation is rewritten downstream; a band is the real "
+                        "necessity test. Defaults to [--layer].")
     p.add_argument("--point", default="resid", choices=["resid", "attn", "mlp"])
     p.add_argument("--pos", type=int, default=-1)
     p.add_argument("--method", default="diffmean", choices=["diffmean", "probe"])
@@ -202,8 +207,27 @@ def main():
     device = next(model.parameters()).device
     dtype = next(model.parameters()).dtype
 
-    steerer = Steerer(model, args.layer, v, device, dtype,
-                      mode=args.mode, ablate_kind=args.ablate_kind, mbar=mbar)
+    # Steering = single site at --layer. Ablation can span a band of layers
+    # (--layers): each gets its OWN per-layer diffmean removed, because a single
+    # site's ablation is re-introduced by downstream layers' residual writes.
+    steer_layers = (args.layers if (args.mode == "ablate" and args.layers)
+                    else [args.layer])
+    steerers = []
+    for L in steer_layers:
+        if L == args.layer:
+            vL, mbarL = v, mbar
+        else:
+            XL = load_tensor(args.acts, L, args.point)[:, idx, :]
+            vL, _ = steering_vector(XL, y, args.method)
+            mbarL = float((XL @ (vL / np.linalg.norm(vL))).mean())
+        steerers.append(Steerer(model, L, vL, device, dtype, mode=args.mode,
+                                ablate_kind=args.ablate_kind, mbar=mbarL))
+    if len(steerers) > 1:
+        print(f"Multi-layer ablation across {len(steerers)} layers: {steer_layers}")
+
+    def set_alpha(a):
+        for s in steerers:
+            s.alpha = float(a)
 
     prompts = (args.prompts.read_text().splitlines() if args.prompts
                else DEFAULT_PROMPTS)
@@ -214,7 +238,7 @@ def main():
         ids = build_input(tok, q, device)
         print(f"\n{'='*70}\nQ: {q}")
         for a in args.alphas:
-            steerer.alpha = float(a)
+            set_alpha(a)
             text = generate(model, tok, ids, args.max_new_tokens)
             hc = hedge_count(text)
             if a == 0:
@@ -226,13 +250,16 @@ def main():
             print(f"\n  alpha={a:+.0f} {tag}  hedges={hc}\n  {text}")
             rows.append({"question": q, "mode": args.mode, "alpha": a,
                          "hedges": hc, "text": text})
-    steerer.alpha = 0.0
-    steerer.remove()
+    set_alpha(0.0)
+    for s in steerers:
+        s.remove()
 
     out_dir = args.acts.parent.parent / "probe_results" / args.acts.name
     out_dir.mkdir(parents=True, exist_ok=True)
     suffix = args.mode + (f"_{args.ablate_kind}" if args.mode == "ablate" else "")
-    out = out_dir / f"steer_{suffix}_{args.method}_{args.point}_L{args.layer}.csv"
+    ltag = (f"L{min(steer_layers)}-{max(steer_layers)}" if len(steer_layers) > 1
+            else f"L{args.layer}")
+    out = out_dir / f"steer_{suffix}_{args.method}_{args.point}_{ltag}.csv"
     pd.DataFrame(rows).to_csv(out, index=False)
     print(f"\nSaved -> {out}")
 
