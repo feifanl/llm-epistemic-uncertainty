@@ -167,6 +167,15 @@ def hedge_count(text):
     return sum(t.count(h) for h in HEDGE_WORDS)
 
 
+def alpha_tag(a, mode):
+    """Human label for a steering scalar, shared by console + markdown."""
+    if a == 0:
+        return "(baseline)"
+    if mode == "ablate":
+        return "(ablated)" if a == 1 else f"(ablate x{a:g})"
+    return "(->known)" if a > 0 else "(->unknown)"
+
+
 # ---------- main ----------
 
 def main():
@@ -195,6 +204,8 @@ def main():
     p.add_argument("--dtype", choices=["fp16", "bf16"], default="bf16")
     p.add_argument("--prompts", type=Path, default=None,
                    help="Optional text file, one neutral question per line")
+    p.add_argument("--out", type=Path, default=None,
+                   help="Markdown output path (default: repo-root steering_results.md)")
     args = p.parse_args()
     if args.alphas is None:
         args.alphas = [0.0, 1.0] if args.mode == "ablate" else [-8, -4, 0, 4, 8]
@@ -258,12 +269,7 @@ def main():
             set_alpha(a)
             text = generate(model, tok, ids, args.max_new_tokens)
             hc = hedge_count(text)
-            if a == 0:
-                tag = "(baseline)"
-            elif args.mode == "ablate":
-                tag = "(ablated)" if a == 1 else f"(ablate x{a:g})"
-            else:
-                tag = "(->known)" if a > 0 else "(->unknown)"
+            tag = alpha_tag(a, args.mode)
             print(f"\n  alpha={a:+.0f} {tag}  hedges={hc}\n  {text}")
             rows.append({"question": q, "mode": args.mode, "alpha": a,
                          "hedges": hc, "text": text})
@@ -271,13 +277,31 @@ def main():
     for s in steerers:
         s.remove()
 
-    out_dir = args.acts.parent.parent / "probe_results" / args.acts.name
-    out_dir.mkdir(parents=True, exist_ok=True)
-    suffix = args.mode + (f"_{args.ablate_kind}" if args.mode == "ablate" else "")
-    ltag = (f"L{min(steer_layers)}-{max(steer_layers)}" if len(steer_layers) > 1
-            else f"L{args.layer}")
-    out = out_dir / f"steer_{suffix}_{args.method}_{args.point}_{ltag}.csv"
-    pd.DataFrame(rows).to_csv(out, index=False)
+    # --- markdown writeup ---
+    ltag = (f"{min(steer_layers)}-{max(steer_layers)}" if len(steer_layers) > 1
+            else str(args.layer))
+    lines = [
+        "# Steering results", "",
+        f"Model: {args.model}",
+        f"Layer: {ltag}, {args.point}",
+        f"Pos: {idx}",
+        f"Mode: {args.mode}"
+        + (f" ({args.ablate_kind}-ablation)" if args.mode == "ablate" else ""),
+        f"Method: {args.method}",
+        f"Vector: {info}",
+        f"Scalar values: {', '.join(f'{a:g}' for a in args.alphas)}",
+        "",
+    ]
+    for q in prompts:
+        lines += ["=" * 70, f"Q: {q}", ""]
+        for r in (row for row in rows if row["question"] == q):
+            tag = alpha_tag(r["alpha"], r["mode"])
+            lines.append(f"  alpha={r['alpha']:+.0f} {tag}  hedges={r['hedges']}")
+            lines.append(f"  {r['text']}")
+            lines.append("")
+
+    out = args.out or (args.acts.parent.parent / "steering_results.md")
+    out.write_text("\n".join(lines), encoding="utf-8")
     print(f"\nSaved -> {out}")
 
 
