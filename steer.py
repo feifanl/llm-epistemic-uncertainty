@@ -50,11 +50,28 @@ from cache_activations import load_model
 # direction carries dataset-specific baggage. If it cleanly modulates
 # confidence vs hedging, it's a general uncertainty knob.
 DEFAULT_PROMPTS = [
+    # hard facts: single correct answer. Steering toward "unknown" should
+    # manufacture doubt where none is warranted -> strongest signal if it does.
     "What year did the French Revolution begin?",
-    "How do I make a basic tomato sauce?",
-    "What causes the seasons on Earth?",
     "Who wrote the play Hamlet?",
+    "What is the chemical symbol for gold?",
+    "How many continents are there?",
+    "What is the boiling point of water at sea level in Celsius?",
+    "What is the capital of Australia?",
+    # explanatory: correct but room to caveat. Mid sensitivity expected.
+    "What causes the seasons on Earth?",
+    "Why is the sky blue?",
+    "How do vaccines work?",
+    "What causes inflation in an economy?",
+    # procedural: how-to, little to hedge. Control group.
+    "How do I make a basic tomato sauce?",
+    "How do I tie a shoelace?",
+    # genuinely open / predictive: model SHOULD hedge at baseline already.
+    # Steering toward "known" is the interesting direction here.
     "Will it rain in Chicago next Tuesday?",
+    "Who will win the next World Cup?",
+    "Is there life on other planets?",
+    "What is the best programming language?",
 ]
 
 HEDGE_WORDS = [
