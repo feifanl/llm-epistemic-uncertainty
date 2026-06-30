@@ -222,9 +222,16 @@ def main():
     p.add_argument("--ablate-kind", default="mean", choices=["mean", "zero"],
                    help="mean=replace v-projection with dataset mean (on-manifold);"
                         " zero=project the direction out entirely")
+    p.add_argument("--alpha-mode", default="raw", choices=["raw", "relative"],
+                   help="raw: hs += alpha*v (absolute, |v| differs per model so "
+                        "alphas are NOT comparable across models). relative: scale "
+                        "v to unit and multiply by mean||hs|| at this layer, so "
+                        "alpha = fraction of typical residual norm -- same push "
+                        "everywhere, fits each model's stable window. add mode only.")
     p.add_argument("--alphas", type=float, nargs="+", default=None,
-                   help="add mode: steering scalars (default -8..8). ablate mode: "
-                        "ablation strength, 1=full (default 0 1)")
+                   help="add mode: steering scalars (raw default -8..8; relative "
+                        "default -1..1). ablate mode: ablation strength, 1=full "
+                        "(default 0 1)")
     p.add_argument("--max-new-tokens", type=int, default=80)
     p.add_argument("--dtype", choices=["fp16", "bf16"], default="bf16")
     p.add_argument("--prompts", type=Path, default=None,
@@ -238,7 +245,12 @@ def main():
                         "sibling). --out sets the .md path; CSV mirrors it.")
     args = p.parse_args()
     if args.alphas is None:
-        args.alphas = [0.0, 1.0] if args.mode == "ablate" else [-8, -4, 0, 4, 8]
+        if args.mode == "ablate":
+            args.alphas = [0.0, 1.0]
+        elif args.alpha_mode == "relative":
+            args.alphas = [-1, -0.5, -0.25, 0, 0.25, 0.5, 1]
+        else:
+            args.alphas = [-8, -4, 0, 4, 8]
     if args.experiment is None:
         args.experiment = "transfer" if args.direction is not None else "own"
 
@@ -279,6 +291,15 @@ def main():
     # mean projection onto v_hat across the dataset -> on-manifold ablation target
     vhat = v / np.linalg.norm(v)
     mbar = float((X @ vhat).mean())
+    # Relative steering: replace v with the unit direction scaled to the layer's
+    # mean residual norm, so alpha becomes a fraction of typical ||hs||. Makes a
+    # given alpha the SAME relative push on every model (Gemma ||hs||~276 vs
+    # Qwen ~82, so raw alpha overshoots Qwen ~3x). add mode only; ablation is
+    # projection-based and already scale-free.
+    if args.alpha_mode == "relative" and args.mode == "add":
+        mean_hs = float(np.linalg.norm(X, axis=1).mean())
+        v = (vhat * mean_hs).astype(np.float32)
+        info += f" [relative: unit*mean||hs||={mean_hs:.1f}]"
     print(f"Steering vector: {info}  (layer={args.layer} {args.point} pos={idx})")
     print(f"Mode: {args.mode}"
           + (f" ({args.ablate_kind}-ablation, mbar={mbar:.2f})"
@@ -346,6 +367,7 @@ def main():
         f"Mode: {args.mode}"
         + (f" ({args.ablate_kind}-ablation)" if args.mode == "ablate" else ""),
         f"Method: {args.method}",
+        f"Alpha-mode: {args.alpha_mode}",
         f"Vector: {info}",
         f"Scalar values: {', '.join(f'{a:g}' for a in args.alphas)}",
         "",
