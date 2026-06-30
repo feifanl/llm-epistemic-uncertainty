@@ -43,7 +43,7 @@ import pandas as pd
 import torch
 
 from linear_probes import sigmoid, train_logreg, load_tensor
-from cache_activations import load_model
+from cache_activations import load_model, slug
 from model_adapter import get_layers, has_chat_template
 
 # Neutral prompts: topics unrelated to the AI/education dataset. If steering
@@ -197,6 +197,13 @@ def main():
     p.add_argument("--point", default="resid", choices=["resid", "attn", "mlp"])
     p.add_argument("--pos", type=int, default=-1)
     p.add_argument("--method", default="diffmean", choices=["diffmean", "probe"])
+    p.add_argument("--direction", type=Path, default=None,
+                   help="Load steering vector from this .npy instead of building "
+                        "it from --acts (cross-model transfer: e.g. apply Gemma's "
+                        "direction to another model). Must match target d_model.")
+    p.add_argument("--save-direction", type=Path, default=None,
+                   help="After building the vector from --acts, save it to this "
+                        ".npy (+ sidecar .json) so it can be reused via --direction.")
     p.add_argument("--mode", default="add", choices=["add", "ablate"],
                    help="add=inject direction (sufficiency); ablate=remove it "
                         "(necessity)")
@@ -210,21 +217,53 @@ def main():
     p.add_argument("--dtype", choices=["fp16", "bf16"], default="bf16")
     p.add_argument("--prompts", type=Path, default=None,
                    help="Optional text file, one neutral question per line")
+    p.add_argument("--experiment", default=None,
+                   help="Run tag for output filenames + CSV column. Default: "
+                        "'transfer' if --direction else 'own'.")
     p.add_argument("--out", type=Path, default=None,
-                   help="Markdown output path (default: repo-root steering_results.md)")
+                   help="Markdown output path. Default: "
+                        "steering_results/{model_slug}__{experiment}.md (CSV "
+                        "sibling). --out sets the .md path; CSV mirrors it.")
     args = p.parse_args()
     if args.alphas is None:
         args.alphas = [0.0, 1.0] if args.mode == "ablate" else [-8, -4, 0, 4, 8]
+    if args.experiment is None:
+        args.experiment = "transfer" if args.direction is not None else "own"
 
     cfg = json.loads((args.acts / "config.json").read_text())
     n_pos = cfg.get("n_pos", 5)
     idx = args.pos if args.pos >= 0 else n_pos + args.pos
 
-    # --- build steering vector from cached acts ---
+    # --- steering vector ---
+    # Target model's own acts at (layer, point, pos). Used to BUILD the vector,
+    # or (when --direction loads one) to dim-check it and compute the ablation
+    # mean-target on the target's own distribution.
     meta = pd.read_parquet(args.acts / "meta.parquet")
     y = meta["label"].values.astype(int)
     X = load_tensor(args.acts, args.layer, args.point)[:, idx, :]
-    v, info = steering_vector(X, y, args.method)
+    if args.direction is not None:
+        v = np.load(args.direction).astype(np.float32)
+        # Dim guard: a raw activation vector only transfers between models whose
+        # residual streams share width. X.shape[1] is the target's d_model.
+        if v.ndim != 1 or v.shape[0] != X.shape[1]:
+            raise SystemExit(
+                f"Direction {args.direction} has dim {v.shape} but target model's "
+                f"{args.point} width is {X.shape[1]} ({args.model}). Not "
+                "dimensionally transferable -- pick a model with matching d_model "
+                "or build a fresh direction with --method (drop --direction)."
+            )
+        info = f"loaded {args.direction.name} |v|={np.linalg.norm(v):.2f}"
+    else:
+        v, info = steering_vector(X, y, args.method)
+        if args.save_direction is not None:
+            args.save_direction.parent.mkdir(parents=True, exist_ok=True)
+            np.save(args.save_direction, v)
+            args.save_direction.with_suffix(".json").write_text(json.dumps({
+                "source_model": args.model, "layer": args.layer,
+                "point": args.point, "pos": idx, "method": args.method,
+                "d_model": int(v.shape[0]), "norm": float(np.linalg.norm(v)),
+            }, indent=2))
+            print(f"Saved direction -> {args.save_direction}")
     # mean projection onto v_hat across the dataset -> on-manifold ablation target
     vhat = v / np.linalg.norm(v)
     mbar = float((X @ vhat).mean())
@@ -289,6 +328,7 @@ def main():
     lines = [
         "# Steering results", "",
         f"Model: {args.model}",
+        f"Experiment: {args.experiment}",
         f"Layer: {ltag}, {args.point}",
         f"Pos: {idx}",
         f"Mode: {args.mode}"
@@ -306,9 +346,26 @@ def main():
             lines.append(f"  {r['text']}")
             lines.append("")
 
-    out = args.out or (args.acts.parent.parent / "steering_results.md")
+    # Default to steering_results/{slug}__{experiment}.md so per-model, per-run
+    # outputs never overwrite each other; CSV mirrors the .md path for the
+    # summarizer to aggregate across runs.
+    repo_root = args.acts.parent.parent
+    out = args.out or (repo_root / "steering_results"
+                       / f"{slug(args.model)}__{args.experiment}.md")
+    out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text("\n".join(lines), encoding="utf-8")
-    print(f"\nSaved -> {out}")
+
+    csv_path = out.with_suffix(".csv")
+    df = pd.DataFrame(rows)
+    df.insert(0, "model", args.model)
+    df.insert(1, "experiment", args.experiment)
+    df.insert(2, "layer", ltag)
+    df.insert(3, "point", args.point)
+    df.insert(4, "pos", idx)
+    df = df[["model", "experiment", "layer", "point", "pos",
+             "mode", "alpha", "question", "hedges", "text"]]
+    df.to_csv(csv_path, index=False)
+    print(f"\nSaved -> {out}\nSaved -> {csv_path}")
 
 
 if __name__ == "__main__":
