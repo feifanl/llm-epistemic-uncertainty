@@ -216,6 +216,13 @@ def main():
     p.add_argument("--save-direction", type=Path, default=None,
                    help="After building the vector from --acts, save it to this "
                         ".npy (+ sidecar .json) so it can be reused via --direction.")
+    p.add_argument("--random-dir", action="store_true",
+                   help="CONTROL: replace the vector with a random one of the SAME "
+                        "norm (and same per-layer scaling). Isolates the "
+                        "uncertainty direction from 'any large push wrecks "
+                        "generation' -- a real knob must beat this. Tags run 'random'.")
+    p.add_argument("--seed", type=int, default=0,
+                   help="RNG seed for --random-dir (reproducible control).")
     p.add_argument("--mode", default="add", choices=["add", "ablate"],
                    help="add=inject direction (sufficiency); ablate=remove it "
                         "(necessity)")
@@ -252,7 +259,9 @@ def main():
         else:
             args.alphas = [-8, -4, 0, 4, 8]
     if args.experiment is None:
-        args.experiment = "transfer" if args.direction is not None else "own"
+        args.experiment = ("random" if args.random_dir
+                           else "transfer" if args.direction is not None
+                           else "own")
 
     cfg = json.loads((args.acts / "config.json").read_text())
     n_pos = cfg.get("n_pos", 5)
@@ -288,6 +297,16 @@ def main():
                 "d_model": int(v.shape[0]), "norm": float(np.linalg.norm(v)),
             }, indent=2))
             print(f"Saved direction -> {args.save_direction}")
+    # Control: swap in a random direction of the SAME norm. Everything downstream
+    # (relative rescale, alphas, hook) treats it identically, so any difference
+    # vs the real direction is attributable to *which way* we push, not how hard.
+    if args.random_dir:
+        rng = np.random.default_rng(args.seed)
+        r = rng.standard_normal(v.shape[0]).astype(np.float32)
+        r = r / np.linalg.norm(r) * np.linalg.norm(v)
+        v = r
+        info = f"RANDOM(seed={args.seed}) |v|={np.linalg.norm(v):.2f}"
+
     # mean projection onto v_hat across the dataset -> on-manifold ablation target
     vhat = v / np.linalg.norm(v)
     mbar = float((X @ vhat).mean())
