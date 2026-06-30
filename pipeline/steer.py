@@ -44,6 +44,7 @@ import torch
 
 from linear_probes import sigmoid, train_logreg, load_tensor
 from cache_activations import load_model
+from model_adapter import get_layers, has_chat_template
 
 # Neutral prompts: topics unrelated to the AI/education dataset. If steering
 # toward "unknown" injects hedging / AI-in-education / year mentions here, the
@@ -119,7 +120,7 @@ class Steerer:
 
     def __init__(self, model, layer_idx, v, device, dtype,
                  mode="add", ablate_kind="mean", mbar=0.0):
-        self.layer = model.model.layers[layer_idx]
+        self.layer = get_layers(model)[layer_idx]
         self.v = torch.tensor(v, device=device, dtype=dtype)
         self.vhat = self.v / self.v.norm()
         self.mbar = float(mbar)
@@ -147,6 +148,11 @@ class Steerer:
 # ---------- generation ----------
 
 def build_input(tok, question, device):
+    # GPT-2 (no chat template) -> plain QA framing so the base model answers
+    # instead of free-associating; chat models use their template.
+    if not has_chat_template(tok):
+        enc = tok(f"Q: {question}\nA:", return_tensors="pt").input_ids
+        return enc.to(device)
     msgs = [{"role": "user", "content": question}]
     enc = tok.apply_chat_template(msgs, add_generation_prompt=True,
                                   return_tensors="pt")

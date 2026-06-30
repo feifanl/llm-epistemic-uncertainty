@@ -19,6 +19,8 @@ import torch
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
+from model_adapter import get_layers, attn_module, mlp_module
+
 PROMPT_TEMPLATE = 'Q: Is the following claim true? "{claim}"\nA:'
 PARAPHRASE_COLS = ["claim", "para_1", "para_2", "para_3", "para_4", "para_5"]
 
@@ -51,7 +53,7 @@ def register_hooks(model):
     Returns (buffer dict, handle list).
     Buffer shape per entry: [batch, seq, d_model]  (overwritten every forward).
     """
-    layers = model.model.layers
+    layers = get_layers(model)          # llama-like or gpt2-like, via adapter
     n = len(layers)
     buf: dict[tuple[int, str], torch.Tensor] = {}
     handles = []
@@ -65,8 +67,8 @@ def register_hooks(model):
 
     for i, layer in enumerate(layers):
         handles.append(layer.register_forward_hook(make_hook(i, "resid")))
-        handles.append(layer.self_attn.register_forward_hook(make_hook(i, "attn")))
-        handles.append(layer.mlp.register_forward_hook(make_hook(i, "mlp")))
+        handles.append(attn_module(layer).register_forward_hook(make_hook(i, "attn")))
+        handles.append(mlp_module(layer).register_forward_hook(make_hook(i, "mlp")))
 
     return buf, handles, n
 
