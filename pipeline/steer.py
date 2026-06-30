@@ -121,6 +121,13 @@ class Steerer:
     def __init__(self, model, layer_idx, v, device, dtype,
                  mode="add", ablate_kind="mean", mbar=0.0):
         self.layer = get_layers(model)[layer_idx]
+        # Multi-GPU: device_map="auto" can place this layer on a different device
+        # than next(model.parameters()). Pin v to the layer's OWN device so the
+        # hook add/ablate stays on one device.
+        try:
+            device = next(self.layer.parameters()).device
+        except StopIteration:
+            pass
         self.v = torch.tensor(v, device=device, dtype=dtype)
         self.vhat = self.v / self.v.norm()
         self.mbar = float(mbar)
@@ -163,7 +170,12 @@ def build_input(tok, question, device):
 
 @torch.no_grad()
 def generate(model, tok, ids, max_new):
-    out = model.generate(input_ids=ids, max_new_tokens=max_new, do_sample=False,
+    # Single, unpadded prompt -> mask is all ones. Passing it explicitly avoids
+    # the "pad token == eos token, cannot infer attention mask" warning and the
+    # unreliable behavior it warns about.
+    mask = torch.ones_like(ids)
+    out = model.generate(input_ids=ids, attention_mask=mask,
+                         max_new_tokens=max_new, do_sample=False,
                          pad_token_id=tok.pad_token_id)
     return tok.decode(out[0, ids.shape[1]:], skip_special_tokens=True).strip()
 
