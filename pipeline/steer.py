@@ -403,8 +403,13 @@ def main():
     # outputs never overwrite each other; CSV mirrors the .md path for the
     # summarizer to aggregate across runs.
     repo_root = args.acts.parent.parent
-    out = args.out or (repo_root / "steering_results"
-                       / f"{slug(args.model)}__{args.experiment}.md")
+    # Random control: seed-suffix the FILENAME so multiple seeds don't overwrite,
+    # while the CSV `experiment` column stays "random" -> summarizer pools seeds
+    # into one control with proper variance.
+    stem = f"{slug(args.model)}__{args.experiment}"
+    if args.random_dir:
+        stem += f"_s{args.seed}"
+    out = args.out or (repo_root / "steering_results" / f"{stem}.md")
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text("\n".join(lines), encoding="utf-8")
 
