@@ -80,7 +80,11 @@ def main():
     device = next(model.parameters()).device
 
     for csv in csvs:
-        df = pd.read_csv(csv)
+        try:
+            df = pd.read_csv(csv)
+        except Exception as e:  # truncated/corrupt (e.g. interrupted run)
+            print(f"{csv.name}: unreadable ({type(e).__name__}), skip + regenerate")
+            continue
         if "confidence" not in df.columns:
             df["confidence"] = pd.NA
         todo = df["confidence"].isna() if not args.force else pd.Series(True, df.index)

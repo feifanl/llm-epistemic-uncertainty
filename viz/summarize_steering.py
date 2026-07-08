@@ -38,8 +38,17 @@ def load_runs(results_dir: Path) -> pd.DataFrame:
     csvs = [c for c in sorted(results_dir.glob("*.csv")) if c.stem != "summary"]
     if not csvs:
         raise SystemExit(f"No CSVs in {results_dir} -- run steer.py first.")
-    df = pd.concat([pd.read_csv(c) for c in csvs], ignore_index=True)
-    print(f"Loaded {len(csvs)} runs, {len(df)} rows from {results_dir}")
+    frames = []
+    for c in csvs:
+        try:
+            frames.append(pd.read_csv(c))
+        except Exception as e:  # truncated/corrupt (e.g. interrupted run)
+            print(f"  WARN skipping unreadable {c.name}: {type(e).__name__} "
+                  f"({e}); rerun that steer command to regenerate it")
+    if not frames:
+        raise SystemExit("No readable CSVs.")
+    df = pd.concat(frames, ignore_index=True)
+    print(f"Loaded {len(frames)}/{len(csvs)} runs, {len(df)} rows from {results_dir}")
     return df
 
 
