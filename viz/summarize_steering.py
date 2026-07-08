@@ -116,6 +116,10 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--results", type=Path, default=Path("steering_results"))
     p.add_argument("--mode", default="add", choices=["add", "ablate", "all"])
+    p.add_argument("--alpha-max", type=float, default=None,
+                   help="Drop |alpha| > this before computing trends/tables. Use to "
+                        "exclude off-manifold breakdown (e.g. --alpha-max 0.5) so "
+                        "corr reflects the coherent steering band, not token salad.")
     p.add_argument("--plot-dir", type=Path, default=Path("plots"))
     args = p.parse_args()
 
@@ -124,6 +128,9 @@ def main():
         df = df[df["mode"] == args.mode]
         if df.empty:
             raise SystemExit(f"No rows with mode={args.mode}.")
+    if args.alpha_max is not None:
+        df = df[df["alpha"].abs() <= args.alpha_max]
+        print(f"Filtered to |alpha| <= {args.alpha_max}: {len(df)} rows")
 
     tables = {}
     for metric in METRICS:
