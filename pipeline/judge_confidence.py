@@ -53,9 +53,8 @@ def score_one(model, tok, device, question, answer, max_chars=1200):
                          pad_token_id=tok.pad_token_id)
     text = tok.decode(out[0, ids.shape[1]:], skip_special_tokens=True)
     m = re.search(r"\d{1,3}", text)
-    if not m:
-        return None
-    return max(0, min(100, int(m.group())))
+    score = max(0, min(100, int(m.group()))) if m else None
+    return score, text
 
 
 def main():
@@ -66,6 +65,8 @@ def main():
     p.add_argument("--dtype", choices=["fp16", "bf16"], default="bf16")
     p.add_argument("--force", action="store_true",
                    help="Re-score rows that already have a confidence value.")
+    p.add_argument("--debug", type=int, default=0,
+                   help="Print raw judge text for the first N rows (diagnose parse).")
     args = p.parse_args()
 
     csvs = sorted(args.results.glob("*.csv"))
@@ -93,9 +94,14 @@ def main():
             print(f"{csv.name}: already scored, skip")
             continue
         print(f"{csv.name}: scoring {n} rows...")
+        dbg = args.debug
         for i in df.index[todo]:
-            df.at[i, "confidence"] = score_one(
+            score, raw = score_one(
                 model, tok, device, df.at[i, "question"], df.at[i, "text"])
+            if dbg > 0:
+                print(f"  [debug] alpha={df.at[i,'alpha']} raw={raw!r} -> {score}")
+                dbg -= 1
+            df.at[i, "confidence"] = score
         df.to_csv(csv, index=False)
         print(f"  mean confidence by alpha:\n"
               + df.groupby('alpha')['confidence'].mean().round(1).to_string())
