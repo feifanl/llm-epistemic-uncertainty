@@ -52,9 +52,9 @@ def load_runs(results_dir: Path) -> pd.DataFrame:
     return df
 
 
-def pivot_metric(df: pd.DataFrame, metric: str) -> pd.DataFrame:
+def pivot_metric(df: pd.DataFrame, metric: str, agg="mean") -> pd.DataFrame:
     return df.pivot_table(index=["model", "experiment", "mode"],
-                          columns="alpha", values=metric, aggfunc="mean")
+                          columns="alpha", values=metric, aggfunc=agg)
 
 
 def trend(df: pd.DataFrame, metric: str) -> pd.Series:
@@ -70,8 +70,9 @@ def trend(df: pd.DataFrame, metric: str) -> pd.Series:
 
 
 def write_markdown(tables: dict, out: Path):
-    lines = ["# Steering summary", ""]
-    for metric, (piv, tr) in tables.items():
+    lines = ["# Steering summary", "",
+             "Cells are mean±SEM across prompts.", ""]
+    for metric, (piv, sem, tr) in tables.items():
         alphas = list(piv.columns)
         header = (["model", "experiment", "mode"]
                   + [f"a={a:g}" for a in alphas] + [f"corr(a,{metric})"])
@@ -80,12 +81,48 @@ def write_markdown(tables: dict, out: Path):
                   "|" + "---|" * len(header)]
         for key, row in piv.iterrows():
             model, exp, mode = key
-            cells = [f"{row[a]:.1f}" if pd.notna(row[a]) else "" for a in alphas]
+            cells = []
+            for a in alphas:
+                if pd.isna(row[a]):
+                    cells.append("")
+                else:
+                    s = sem.loc[key, a]
+                    cells.append(f"{row[a]:.1f}±{s:.0f}" if pd.notna(s)
+                                 else f"{row[a]:.1f}")
             c = tr.get(key, np.nan)
             cells.append(f"{c:+.2f}" if pd.notna(c) else "")
             lines.append("| " + " | ".join([model, exp, mode] + cells) + " |")
         lines.append("")
     out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(f"Saved -> {out}")
+
+
+def lineplot(df: pd.DataFrame, metric: str, out: Path):
+    """Per-model curve: mean metric vs alpha, one line per experiment, SEM band.
+
+    This is the headline figure: own-dir should climb (confidence) / fall
+    (hedges) with alpha while the random control stays flat -- the separation
+    is the causal claim.
+    """
+    models = sorted(df["model"].unique())
+    fig, axes = plt.subplots(1, len(models), squeeze=False,
+                             figsize=(4 * len(models), 3.8), sharey=True)
+    for ax, model in zip(axes[0], models):
+        sub = df[df["model"] == model]
+        for exp in sorted(sub["experiment"].unique()):
+            g = sub[sub["experiment"] == exp].groupby("alpha")[metric]
+            a = sorted(g.groups)
+            mean = g.mean().reindex(a)
+            sem = g.sem().reindex(a).fillna(0)
+            ax.plot(a, mean, marker="o", label=exp)
+            ax.fill_between(a, mean - sem, mean + sem, alpha=0.2)
+        ax.set_title(model.split("/")[-1], fontsize=9)
+        ax.set_xlabel("alpha")
+        ax.legend(fontsize=7)
+    axes[0][0].set_ylabel(f"mean {metric}")
+    fig.tight_layout()
+    out.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out, dpi=150)
     print(f"Saved -> {out}")
 
 
@@ -137,9 +174,11 @@ def main():
         if metric not in df.columns or df[metric].notna().sum() == 0:
             continue
         piv = pivot_metric(df, metric)
-        tables[metric] = (piv, trend(df, metric))
+        sem = pivot_metric(df, metric, agg="sem")
+        tables[metric] = (piv, sem, trend(df, metric))
         print(f"\n[{metric}]\n" + piv.round(1).to_string())
         heatmap(piv, metric, args.plot_dir / f"steering_summary_{metric}.png")
+        lineplot(df, metric, args.plot_dir / f"steering_curve_{metric}.png")
 
     if not tables:
         raise SystemExit("No usable metric columns (hedges/confidence).")
