@@ -104,7 +104,8 @@ def main():
         if "confidence" not in df.columns:
             df["confidence"] = float("nan")
         else:
-            df["confidence"] = pd.to_numeric(df["confidence"], errors="coerce")
+            df["confidence"] = pd.to_numeric(
+                df["confidence"], errors="coerce").astype("float64")
         todo = df["confidence"].isna() if not args.force else pd.Series(True, df.index)
         n = int(todo.sum())
         if n == 0:
