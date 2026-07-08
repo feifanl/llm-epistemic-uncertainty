@@ -99,8 +99,12 @@ def main():
         except Exception as e:  # truncated/corrupt (e.g. interrupted run)
             print(f"{csv.name}: unreadable ({type(e).__name__}), skip + regenerate")
             continue
+        # Force float dtype: an old run may have written int64 confidence, which
+        # rejects the new fractional P(Yes)*100 scores.
         if "confidence" not in df.columns:
-            df["confidence"] = pd.NA
+            df["confidence"] = float("nan")
+        else:
+            df["confidence"] = pd.to_numeric(df["confidence"], errors="coerce")
         todo = df["confidence"].isna() if not args.force else pd.Series(True, df.index)
         n = int(todo.sum())
         if n == 0:
