@@ -3,20 +3,24 @@ Model-agnostic confidence scoring for steering CSVs.
 
 hedge_count (in steer.py) was hand-tuned to the words Gemma emits, so it
 under-reads other models' uncertainty register ("No claim can state...") and
-scores ~0 on degenerate text. This judge replaces it with one consistent ruler:
-an instruct model rates each answer's CONFIDENCE / ASSERTIVENESS 0-100,
-independent of which model produced it and independent of correctness.
+scores ~0 on degenerate text. This judge replaces it with one consistent ruler.
 
-Reads every steering_results/*.csv, adds a `confidence` column in place
-(idempotent -- skips rows already scored unless --force), so summarize_steering.py
-can pivot it exactly like hedges.
+We do NOT ask the judge for a number -- a 7B judge ignores a 0-100 rubric and
+buckets to lazy round digits (5, 1, 10), giving no resolution. Instead we pose a
+forced Yes/No ("is this answer confident and assertive?") and read the
+next-token logits: confidence = P(Yes) / (P(Yes)+P(No)) in [0,1], scaled to
+0-100. Continuous, parse-free, and comparable across judges.
+
+Writes a `confidence` column in place into every steering_results/*.csv
+(idempotent -- skips already-scored rows unless --force) so
+summarize_steering.py can pivot it like hedges.
 
 Usage:
     python pipeline/judge_confidence.py
     python pipeline/judge_confidence.py --judge-model google/gemma-2-9b-it --force
+    python pipeline/judge_confidence.py --debug 10        # print P(Yes) for a few
 """
 import argparse
-import re
 from pathlib import Path
 
 import pandas as pd
@@ -26,20 +30,29 @@ from cache_activations import load_model
 from model_adapter import has_chat_template
 
 RUBRIC = (
-    "You score how CONFIDENT and ASSERTIVE an answer is, ignoring whether it is "
-    "correct or coherent.\n"
-    "0   = maximally hedged/uncertain: refuses, says no one knows, heavy caveats, "
-    "'it depends', 'no consensus'.\n"
-    "100 = maximally confident/assertive: flat factual claim, no hedging.\n"
-    "50  = mixed.\n"
+    "Judge whether the following answer is CONFIDENT and ASSERTIVE (states things "
+    "plainly, commits to a claim) or HEDGED and UNCERTAIN (caveats, refuses, 'no "
+    "one knows', 'it depends', 'no consensus'). Ignore whether it is correct.\n"
     "Question: {q}\n"
     "Answer: {a}\n"
-    "Reply with ONLY an integer 0-100, nothing else."
+    "Is the answer confident and assertive? Answer with one word: Yes or No."
 )
 
 
+def cand_ids(tok, words):
+    """First-token ids for each word form (with/without leading space)."""
+    ids = set()
+    for w in words:
+        for form in (w, " " + w):
+            t = tok(form, add_special_tokens=False).input_ids
+            if t:
+                ids.add(t[0])
+    return sorted(ids)
+
+
 @torch.no_grad()
-def score_one(model, tok, device, question, answer, max_chars=1200):
+def score_one(model, tok, device, question, answer, yes_ids, no_ids,
+              max_chars=1200):
     prompt = RUBRIC.format(q=question, a=str(answer)[:max_chars])
     if has_chat_template(tok):
         enc = tok.apply_chat_template([{"role": "user", "content": prompt}],
@@ -48,13 +61,11 @@ def score_one(model, tok, device, question, answer, max_chars=1200):
         ids = (enc if torch.is_tensor(enc) else enc["input_ids"]).to(device)
     else:
         ids = tok(prompt, return_tensors="pt").input_ids.to(device)
-    out = model.generate(input_ids=ids, attention_mask=torch.ones_like(ids),
-                         max_new_tokens=8, do_sample=False,
-                         pad_token_id=tok.pad_token_id)
-    text = tok.decode(out[0, ids.shape[1]:], skip_special_tokens=True)
-    m = re.search(r"\d{1,3}", text)
-    score = max(0, min(100, int(m.group()))) if m else None
-    return score, text
+    logits = model(ids).logits[0, -1].float()          # [vocab]
+    yes = torch.logsumexp(logits[yes_ids], 0)
+    no = torch.logsumexp(logits[no_ids], 0)
+    p_yes = torch.softmax(torch.stack([yes, no]), 0)[0].item()
+    return round(p_yes * 100, 1), f"P(Yes)={p_yes:.3f}"
 
 
 def main():
@@ -66,11 +77,10 @@ def main():
     p.add_argument("--force", action="store_true",
                    help="Re-score rows that already have a confidence value.")
     p.add_argument("--debug", type=int, default=0,
-                   help="Print raw judge text for the first N rows (diagnose parse).")
+                   help="Print P(Yes) for the first N rows (sanity check).")
     args = p.parse_args()
 
-    csvs = sorted(args.results.glob("*.csv"))
-    csvs = [c for c in csvs if c.stem != "summary"]
+    csvs = [c for c in sorted(args.results.glob("*.csv")) if c.stem != "summary"]
     if not csvs:
         raise SystemExit(f"No CSVs in {args.results}.")
 
@@ -79,6 +89,9 @@ def main():
     if tok.pad_token is None:
         tok.pad_token = tok.eos_token
     device = next(model.parameters()).device
+    yes_ids = cand_ids(tok, ["Yes", "yes", "YES"])
+    no_ids = cand_ids(tok, ["No", "no", "NO"])
+    print(f"Yes token ids {yes_ids}, No token ids {no_ids}")
 
     for csv in csvs:
         try:
@@ -96,10 +109,10 @@ def main():
         print(f"{csv.name}: scoring {n} rows...")
         dbg = args.debug
         for i in df.index[todo]:
-            score, raw = score_one(
-                model, tok, device, df.at[i, "question"], df.at[i, "text"])
+            score, raw = score_one(model, tok, device, df.at[i, "question"],
+                                   df.at[i, "text"], yes_ids, no_ids)
             if dbg > 0:
-                print(f"  [debug] alpha={df.at[i,'alpha']} raw={raw!r} -> {score}")
+                print(f"  [debug] alpha={df.at[i,'alpha']} {raw} -> {score}")
                 dbg -= 1
             df.at[i, "confidence"] = score
         df.to_csv(csv, index=False)
