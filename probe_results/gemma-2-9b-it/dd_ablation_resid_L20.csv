@@ -1,0 +1,23 @@
+idx,cell,mode,p_full,p_ablated,text
+5,past_known,strip_years,1.0,1.0,Early MOOCs (circa -) had completion rates below 10% on average.
+28,past_unknown,strip_years,0.0007,0.0024,Mueller and Oppenheimer's finding that handwritten notes outperform laptop notes for conceptual learning has been broadly replicated.
+50,future_known,strip_years,0.9985,0.9999,"By , a majority of US college students will have used a generative AI tool for coursework."
+51,future_known,strip_years,1.0,1.0,"By , plagiarism/AI-detection software will continue to be sold to US universities."
+52,future_known,strip_years,0.998,0.9998,"By , most US universities will have a formal policy on student AI use in coursework."
+53,future_known,strip_years,0.9993,0.9895,"By , the cost-per-token of GPT-4-class models will be lower than it was in early ."
+54,future_known,strip_years,1.0,0.9999,"By , smartphones will remain widespread among US K-12 students."
+55,future_known,strip_years,0.9999,1.0,"By , ChatGPT or its successor will still be operated by OpenAI in some form."
+56,future_known,strip_years,1.0,1.0,"By , Microsoft's office suite will continue to include some embedded AI features."
+57,future_known,strip_years,0.9979,1.0,"By , automated machine grading of multiple-choice tests will continue to be widely used in US schools."
+58,future_known,strip_years,1.0,1.0,"By , the percentage of US college students who have ever heard of ChatGPT will exceed 95%."
+59,future_known,strip_years,1.0,1.0,"By , some form of standardized testing will continue to be used for US college admissions."
+75,future_unknown,strip_years,0.0,0.0,"By , AI tutors will have replaced human teachers in most US K-12 classrooms."
+76,future_unknown,strip_years,0.0,0.0,"By , students taught primarily by AI will outperform peers taught by humans on standardized tests."
+77,future_unknown,strip_years,0.0,0.0,"By , AI tutors will eliminate the educational achievement gap between high- and low-income US students."
+78,future_unknown,strip_years,0.0002,0.0015,"By , the average US student will spend more class time interacting with AI than with human teachers."
+79,future_unknown,strip_years,0.0,0.0,"By , oral examinations will become the dominant assessment format in US universities due to AI cheating concerns."
+80,future_unknown,strip_years,0.0,0.0002,"By , AI will write the majority of textbooks used in US schools."
+81,future_unknown,strip_years,0.0,0.0001,"By , students will trust AI tutors more than human teachers on average."
+82,future_unknown,strip_years,0.0,0.0,"By , formal degrees will be replaced by AI-verified competency credentials in most US hiring."
+83,future_unknown,strip_years,0.0,0.0004,"By , learning a foreign language will be uncommon in US schools because of AI translation."
+84,future_unknown,strip_years,0.0,0.0,"By , AI tutors will discover novel pedagogical methods that human educators would not have invented."

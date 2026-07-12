@@ -1,0 +1,63 @@
+claim,p_known,pred
+Use of smartphones in classrooms is associated with reduced student attention.,0.999936282242187,1
+Educational television programs like Sesame Street improved early literacy outcomes for preschoolers.,0.9999982019047315,1
+Spaced repetition leads to better long-term retention than massed practice.,0.9999998142260232,1
+Retrieval practice (testing) improves retention more than re-reading.,0.999998559937013,1
+The popular learning-styles theory (visual/auditory/kinesthetic matching) does not improve learning outcomes.,0.9999657819585459,1
+Early MOOCs (circa 2012-2014) had completion rates below 10% on average.,0.9999996006457211,1
+Early MOOCs (circa -) had completion rates below 10% on average.,0.9999980651981337,1
+"Calculator use in schools did not, on average, harm students' arithmetic ability.",0.9999391675954943,1
+Online courses tend to have higher dropout rates than equivalent in-person courses.,0.9999994123515492,1
+The split-attention effect from cognitive load theory is a real phenomenon.,0.9999995885245149,1
+PowerPoint became the dominant lecture-presentation tool in US universities by the mid-2000s.,0.9999993752676463,1
+1980s computer-aided instruction produced lasting gains in long-term student outcomes.,0.0001521503545693469,0
+Interactive whiteboards in 2000s classrooms improved learning outcomes more than equivalent non-digital displays.,3.1106157107191114e-06,0
+The 'flipped classroom' model produces consistent positive learning gains over traditional lectures.,9.225165835337915e-07,0
+Mueller and Oppenheimer's 2014 finding that handwritten notes outperform laptop notes for conceptual learning has been broadly replicated.,0.0007319811577369644,0
+Mueller and Oppenheimer's finding that handwritten notes outperform laptop notes for conceptual learning has been broadly replicated.,0.0024370894297201305,0
+1:1 device programs in K-12 schools have produced meaningful improvements in learning outcomes.,6.033926402842655e-07,0
+Educational video games consistently improve transferable problem-solving skills.,1.79234897086392e-06,0
+Carol Dweck's growth-mindset interventions produce robust academic improvements at the effect sizes originally reported.,0.0031399574850110783,0
+Adaptive learning systems in higher education close achievement gaps to a meaningful degree.,7.531004735861661e-07,0
+Pre-pandemic VR in classrooms produced durable learning gains over equivalent non-VR instruction.,1.2580984475508866e-06,0
+Banning laptops in college lectures improves student learning on average.,6.704847811296271e-05,0
+"By 2030, a majority of US college students will have used a generative AI tool for coursework.",0.9985476722555892,1
+"By , a majority of US college students will have used a generative AI tool for coursework.",0.9999359503409007,1
+"By 2027, plagiarism/AI-detection software will continue to be sold to US universities.",0.9999999963468162,1
+"By , plagiarism/AI-detection software will continue to be sold to US universities.",0.9999999333356362,1
+"By 2027, most US universities will have a formal policy on student AI use in coursework.",0.9979924426594112,1
+"By , most US universities will have a formal policy on student AI use in coursework.",0.9997786483024744,1
+"By 2027, the cost-per-token of GPT-4-class models will be lower than it was in early 2024.",0.9992718381854557,1
+"By , the cost-per-token of GPT-4-class models will be lower than it was in early .",0.9895054103044136,1
+"By 2027, smartphones will remain widespread among US K-12 students.",0.9999903070936371,1
+"By , smartphones will remain widespread among US K-12 students.",0.9999132349140238,1
+"By 2028, ChatGPT or its successor will still be operated by OpenAI in some form.",0.9999084157642809,1
+"By , ChatGPT or its successor will still be operated by OpenAI in some form.",0.9999989027545699,1
+"By 2027, Microsoft's office suite will continue to include some embedded AI features.",0.999999999700439,1
+"By , Microsoft's office suite will continue to include some embedded AI features.",0.9999999945542746,1
+"By 2030, automated machine grading of multiple-choice tests will continue to be widely used in US schools.",0.9979094301170853,1
+"By , automated machine grading of multiple-choice tests will continue to be widely used in US schools.",0.9999791076705505,1
+"By 2027, the percentage of US college students who have ever heard of ChatGPT will exceed 95%.",0.9999725250060923,1
+"By , the percentage of US college students who have ever heard of ChatGPT will exceed 95%.",0.9999981409782813,1
+"By 2030, some form of standardized testing will continue to be used for US college admissions.",0.9999999953071959,1
+"By , some form of standardized testing will continue to be used for US college admissions.",0.9999999992410424,1
+"By 2035, AI tutors will have replaced human teachers in most US K-12 classrooms.",1.5936397547053558e-06,0
+"By , AI tutors will have replaced human teachers in most US K-12 classrooms.",2.226989470784559e-05,0
+"By 2040, students taught primarily by AI will outperform peers taught by humans on standardized tests.",5.598353684937416e-09,0
+"By , students taught primarily by AI will outperform peers taught by humans on standardized tests.",5.939666188053915e-10,0
+"By 2035, AI tutors will eliminate the educational achievement gap between high- and low-income US students.",2.61446461991757e-09,0
+"By , AI tutors will eliminate the educational achievement gap between high- and low-income US students.",1.6923289373097211e-09,0
+"By 2040, the average US student will spend more class time interacting with AI than with human teachers.",0.00019596715794355387,0
+"By , the average US student will spend more class time interacting with AI than with human teachers.",0.0015203878749910004,0
+"By 2035, oral examinations will become the dominant assessment format in US universities due to AI cheating concerns.",1.2485878525146885e-06,0
+"By , oral examinations will become the dominant assessment format in US universities due to AI cheating concerns.",2.4006013889780643e-05,0
+"By 2040, AI will write the majority of textbooks used in US schools.",1.5994654913900586e-05,0
+"By , AI will write the majority of textbooks used in US schools.",0.0002383819817285477,0
+"By 2035, students will trust AI tutors more than human teachers on average.",4.5126332090265546e-05,0
+"By , students will trust AI tutors more than human teachers on average.",6.965759913353827e-05,0
+"By 2050, formal degrees will be replaced by AI-verified competency credentials in most US hiring.",1.5428881447913777e-07,0
+"By , formal degrees will be replaced by AI-verified competency credentials in most US hiring.",2.292701693064759e-05,0
+"By 2035, learning a foreign language will be uncommon in US schools because of AI translation.",2.8553142729028055e-07,0
+"By , learning a foreign language will be uncommon in US schools because of AI translation.",0.0004091334876609019,0
+"By 2040, AI tutors will discover novel pedagogical methods that human educators would not have invented.",1.2508706681839803e-06,0
+"By , AI tutors will discover novel pedagogical methods that human educators would not have invented.",2.4462785521129407e-06,0

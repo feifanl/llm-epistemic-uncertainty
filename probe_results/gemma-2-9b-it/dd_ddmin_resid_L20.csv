@@ -1,0 +1,11 @@
+label,n_words,n_minimal,p_full,p_minimal,minimal_text,full_text,idx,cell,mode
+0,10,3,0.0002,0.3709,gains student outcomes.,1980s computer-aided instruction produced lasting gains in long-term student outcomes.,25,past_unknown,ddmin
+0,13,2,0.0,0.0741,2000s improved,Interactive whiteboards in 2000s classrooms improved learning outcomes more than equivalent non-digital displays.,26,past_unknown,ddmin
+0,12,4,0.0,0.2123,The 'flipped produces consistent,The 'flipped classroom' model produces consistent positive learning gains over traditional lectures.,27,past_unknown,ddmin
+0,18,2,0.0007,0.4905,notes outperform,Mueller and Oppenheimer's 2014 finding that handwritten notes outperform laptop notes for conceptual learning has been broadly replicated.,28,past_unknown,ddmin
+0,13,4,0.0,0.2292,produced meaningful improvements outcomes.,1:1 device programs in K-12 schools have produced meaningful improvements in learning outcomes.,29,past_unknown,ddmin
+0,14,2,0.0,0.0,AI replaced,"By 2035, AI tutors will have replaced human teachers in most US K-12 classrooms.",75,future_unknown,ddmin
+0,16,4,0.0,0.3389,primarily by AI will,"By 2040, students taught primarily by AI will outperform peers taught by humans on standardized tests.",76,future_unknown,ddmin
+0,16,3,0.0,0.098,eliminate the educational,"By 2035, AI tutors will eliminate the educational achievement gap between high- and low-income US students.",77,future_unknown,ddmin
+0,18,5,0.0002,0.4973,"By 2040, average student more","By 2040, the average US student will spend more class time interacting with AI than with human teachers.",78,future_unknown,ddmin
+0,18,3,0.0,0.0484,become the assessment,"By 2035, oral examinations will become the dominant assessment format in US universities due to AI cheating concerns.",79,future_unknown,ddmin
