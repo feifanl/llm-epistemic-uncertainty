@@ -104,6 +104,30 @@ def steering_vector(X, y, method):
     return v, f"probe(scaled to diffmean) |v|={np.linalg.norm(v):.2f}"
 
 
+def layer_vector(XL, y, args, loaded, seed_offset):
+    """Final injection vector + ablation mean-target for ONE layer's acts XL.
+
+    Applies method / loaded-direction / random-control / relative-rescale
+    uniformly, so every layer in a band is treated identically to the single
+    site. seed_offset (the layer index) gives each band layer an independent
+    random control instead of the same random vector everywhere.
+    """
+    if loaded is not None:
+        v = loaded.astype(np.float32)
+    else:
+        v, _ = steering_vector(XL, y, args.method)
+    if args.random_dir:
+        rng = np.random.default_rng(args.seed + seed_offset)
+        r = rng.standard_normal(v.shape[0]).astype(np.float32)
+        v = (r / np.linalg.norm(r) * np.linalg.norm(v)).astype(np.float32)
+    vhat = v / np.linalg.norm(v)
+    mbar = float((XL @ vhat).mean())
+    if args.alpha_mode == "relative" and args.mode == "add":
+        mean_hs = float(np.linalg.norm(XL, axis=1).mean())
+        v = (vhat * mean_hs).astype(np.float32)
+    return v.astype(np.float32), mbar
+
+
 # ---------- steering hook ----------
 
 class Steerer:
@@ -202,10 +226,13 @@ def main():
     p.add_argument("--model", required=True)
     p.add_argument("--layer", type=int, default=20)
     p.add_argument("--layers", type=int, nargs="+", default=None,
-                   help="ablate mode only: ablate a PER-LAYER diffmean at each of "
-                        "these layers (e.g. --layers 12 13 .. 26). Single-site "
-                        "ablation is rewritten downstream; a band is the real "
-                        "necessity test. Defaults to [--layer].")
+                   help="Band intervention across these layers, each with its OWN "
+                        "per-layer vector (e.g. --layers 16 17 18 19 20 21 22). "
+                        "For add: inject at every layer -- tests whether a "
+                        "decodable-but-single-site-inert direction becomes causal "
+                        "under multi-site push. For ablate: remove at every layer "
+                        "(single-site ablation is rewritten downstream). "
+                        "Defaults to [--layer].")
     p.add_argument("--point", default="resid", choices=["resid", "attn", "mlp"])
     p.add_argument("--pos", type=int, default=-1)
     p.add_argument("--method", default="diffmean", choices=["diffmean", "probe"])
@@ -274,55 +301,40 @@ def main():
     meta = pd.read_parquet(args.acts / "meta.parquet")
     y = meta["label"].values.astype(int)
     X = load_tensor(args.acts, args.layer, args.point)[:, idx, :]
+
+    # A loaded direction (transfer) is used at every band layer; dim-check it once
+    # against the target's residual width.
+    loaded = None
     if args.direction is not None:
-        v = np.load(args.direction).astype(np.float32)
-        # Dim guard: a raw activation vector only transfers between models whose
-        # residual streams share width. X.shape[1] is the target's d_model.
-        if v.ndim != 1 or v.shape[0] != X.shape[1]:
+        loaded = np.load(args.direction).astype(np.float32)
+        if loaded.ndim != 1 or loaded.shape[0] != X.shape[1]:
             raise SystemExit(
-                f"Direction {args.direction} has dim {v.shape} but target model's "
-                f"{args.point} width is {X.shape[1]} ({args.model}). Not "
+                f"Direction {args.direction} has dim {loaded.shape} but target "
+                f"model's {args.point} width is {X.shape[1]} ({args.model}). Not "
                 "dimensionally transferable -- pick a model with matching d_model "
                 "or build a fresh direction with --method (drop --direction)."
             )
-        info = f"loaded {args.direction.name} |v|={np.linalg.norm(v):.2f}"
-    else:
-        v, info = steering_vector(X, y, args.method)
-        if args.save_direction is not None:
-            args.save_direction.parent.mkdir(parents=True, exist_ok=True)
-            np.save(args.save_direction, v)
-            args.save_direction.with_suffix(".json").write_text(json.dumps({
-                "source_model": args.model, "layer": args.layer,
-                "point": args.point, "pos": idx, "method": args.method,
-                "d_model": int(v.shape[0]), "norm": float(np.linalg.norm(v)),
-            }, indent=2))
-            print(f"Saved direction -> {args.save_direction}")
-    # Control: swap in a random direction of the SAME norm. Everything downstream
-    # (relative rescale, alphas, hook) treats it identically, so any difference
-    # vs the real direction is attributable to *which way* we push, not how hard.
-    if args.random_dir:
-        rng = np.random.default_rng(args.seed)
-        r = rng.standard_normal(v.shape[0]).astype(np.float32)
-        r = r / np.linalg.norm(r) * np.linalg.norm(v)
-        v = r
-        info = f"RANDOM(seed={args.seed}) |v|={np.linalg.norm(v):.2f}"
+    elif args.save_direction is not None:
+        raw, _ = steering_vector(X, y, args.method)   # save the raw diffmean
+        args.save_direction.parent.mkdir(parents=True, exist_ok=True)
+        np.save(args.save_direction, raw)
+        args.save_direction.with_suffix(".json").write_text(json.dumps({
+            "source_model": args.model, "layer": args.layer,
+            "point": args.point, "pos": idx, "method": args.method,
+            "d_model": int(raw.shape[0]), "norm": float(np.linalg.norm(raw)),
+        }, indent=2))
+        print(f"Saved direction -> {args.save_direction}")
 
-    # mean projection onto v_hat across the dataset -> on-manifold ablation target
-    vhat = v / np.linalg.norm(v)
-    mbar = float((X @ vhat).mean())
-    # Relative steering: replace v with the unit direction scaled to the layer's
-    # mean residual norm, so alpha becomes a fraction of typical ||hs||. Makes a
-    # given alpha the SAME relative push on every model (Gemma ||hs||~276 vs
-    # Qwen ~82, so raw alpha overshoots Qwen ~3x). add mode only; ablation is
-    # projection-based and already scale-free.
-    if args.alpha_mode == "relative" and args.mode == "add":
-        mean_hs = float(np.linalg.norm(X, axis=1).mean())
-        v = (vhat * mean_hs).astype(np.float32)
-        info += f" [relative: unit*mean||hs||={mean_hs:.1f}]"
-    print(f"Steering vector: {info}  (layer={args.layer} {args.point} pos={idx})")
+    steer_layers = args.layers if args.layers else [args.layer]
+    kind = ("loaded " + args.direction.name if loaded is not None
+            else f"RANDOM(seed={args.seed})" if args.random_dir
+            else args.method)
+    info = f"{kind}, alpha_mode={args.alpha_mode}"
+    band = f"{min(steer_layers)}-{max(steer_layers)}" if len(steer_layers) > 1 \
+        else str(args.layer)
+    print(f"Steering vector: {info}  (layers={band} {args.point} pos={idx})")
     print(f"Mode: {args.mode}"
-          + (f" ({args.ablate_kind}-ablation, mbar={mbar:.2f})"
-             if args.mode == "ablate" else ""))
+          + (f" ({args.ablate_kind}-ablation)" if args.mode == "ablate" else ""))
 
     # --- model ---
     print(f"Loading {args.model} ({args.dtype})...")
@@ -332,23 +344,17 @@ def main():
     device = next(model.parameters()).device
     dtype = next(model.parameters()).dtype
 
-    # Steering = single site at --layer. Ablation can span a band of layers
-    # (--layers): each gets its OWN per-layer diffmean removed, because a single
-    # site's ablation is re-introduced by downstream layers' residual writes.
-    steer_layers = (args.layers if (args.mode == "ablate" and args.layers)
-                    else [args.layer])
+    # One Steerer per layer, each with its OWN per-layer vector (band). A single
+    # site's edit is diluted/rewritten by downstream layers; a band tests whether
+    # a decodable direction becomes causal under multi-site push.
     steerers = []
     for L in steer_layers:
-        if L == args.layer:
-            vL, mbarL = v, mbar
-        else:
-            XL = load_tensor(args.acts, L, args.point)[:, idx, :]
-            vL, _ = steering_vector(XL, y, args.method)
-            mbarL = float((XL @ (vL / np.linalg.norm(vL))).mean())
+        XL = X if L == args.layer else load_tensor(args.acts, L, args.point)[:, idx, :]
+        vL, mbarL = layer_vector(XL, y, args, loaded, seed_offset=L)
         steerers.append(Steerer(model, L, vL, device, dtype, mode=args.mode,
                                 ablate_kind=args.ablate_kind, mbar=mbarL))
     if len(steerers) > 1:
-        print(f"Multi-layer ablation across {len(steerers)} layers: {steer_layers}")
+        print(f"Band {args.mode} across {len(steerers)} layers: {steer_layers}")
 
     def set_alpha(a):
         for s in steerers:
