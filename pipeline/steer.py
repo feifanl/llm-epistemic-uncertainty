@@ -347,14 +347,24 @@ def main():
     # One Steerer per layer, each with its OWN per-layer vector (band). A single
     # site's edit is diluted/rewritten by downstream layers; a band tests whether
     # a decodable direction becomes causal under multi-site push.
+    # Band add push compounds across layers (~n_layers x a single site), so a band
+    # alpha would break generation long before a single-site one. Divide each
+    # layer's contribution by n so a band alpha means roughly the same TOTAL push
+    # as the single-site alpha -> comparable in the summary table. add+relative
+    # only; ablation is projection-based, no compounding.
+    nL = len(steer_layers)
+    band_scale = (1.0 / nL if (nL > 1 and args.mode == "add"
+                               and args.alpha_mode == "relative") else 1.0)
     steerers = []
     for L in steer_layers:
         XL = X if L == args.layer else load_tensor(args.acts, L, args.point)[:, idx, :]
         vL, mbarL = layer_vector(XL, y, args, loaded, seed_offset=L)
-        steerers.append(Steerer(model, L, vL, device, dtype, mode=args.mode,
-                                ablate_kind=args.ablate_kind, mbar=mbarL))
+        steerers.append(Steerer(model, L, vL * band_scale, device, dtype,
+                                mode=args.mode, ablate_kind=args.ablate_kind,
+                                mbar=mbarL))
     if len(steerers) > 1:
-        print(f"Band {args.mode} across {len(steerers)} layers: {steer_layers}")
+        print(f"Band {args.mode} across {nL} layers: {steer_layers} "
+              f"(per-layer scale x{band_scale:.3f})")
 
     def set_alpha(a):
         for s in steerers:
