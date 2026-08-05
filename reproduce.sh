@@ -14,6 +14,11 @@ PY=${PY:-python}
 MODELS_ALL="google/gemma-2-9b google/gemma-2-9b-it Qwen/Qwen2.5-7B Qwen/Qwen2.5-7B-Instruct meta-llama/Llama-3.1-8B meta-llama/Llama-3.1-8B-Instruct gpt2-large"
 slug() { echo "$1" | tr / _; }
 
+# resid only: it's the sole hook point behind a paper number, and caching all
+# three costs ~5 GB per 9B checkpoint instead of ~2. POINTS="resid attn mlp"
+# to reproduce the early gemma attn/mlp probe csvs.
+POINTS=${POINTS:-resid}
+
 # cache every checkpoint at the SAME --n-pos. the committed instruct csvs have
 # only pos 0 and the base ones pos 4; whether those are the same token is
 # recorded only in the gitignored config.json. caching everything at 5 makes
@@ -21,7 +26,7 @@ slug() { echo "$1" | tr / _; }
 if [[ $stage == cache || $stage == all ]]; then
   for M in $MODELS_ALL; do
     $PY pipeline/cache_activations.py --model "$M" --n-pos 5 \
-      --out "activations/$(slug "$M")/"
+      --points $POINTS --out "activations/$(slug "$M")/"
   done
 fi
 
