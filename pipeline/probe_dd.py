@@ -46,8 +46,6 @@ from cache_activations import (
 )
 
 
-# ---------- probe (trained once, then frozen) ----------
-
 class FrozenProbe:
     """Logreg probe + the train standardization stats, so it can score any
     new activation vector. mu/sd are kept explicitly (linear_probes.standardize
@@ -67,15 +65,13 @@ class FrozenProbe:
         return float(sigmoid(xs @ self.w + self.b))
 
 
-# ---------- claim -> activation -> probe score ----------
-
 class Scorer:
     """Holds the model + hooks; turns a claim string into P(known)."""
 
-    def __init__(self, model, tok, buf, n_layers, n_pos, device,
+    def __init__(self, model, tok, buf, n_pos, device,
                  layer, point, idx, probe):
         self.model, self.tok, self.buf = model, tok, buf
-        self.n_layers, self.n_pos, self.device = n_layers, n_pos, device
+        self.n_pos, self.device = n_pos, device
         self.layer, self.point, self.idx, self.probe = layer, point, idx, probe
         self.trace = []   # (claim, p_known, pred) for every call
 
@@ -83,7 +79,7 @@ class Scorer:
         """Live raw activation [D] for a claim (the vector the probe scores)."""
         prompt = PROMPT_TEMPLATE.format(claim=claim)
         out = run_batch(self.model, self.tok, [prompt], self.buf,
-                        self.n_layers, self.n_pos, self.device)
+                        self.n_pos, self.device)
         return out[(self.layer, self.point)][0, self.idx, :].numpy()
 
     def score(self, claim):
@@ -92,8 +88,6 @@ class Scorer:
         self.trace.append((claim, p, int(p > 0.5)))
         return p
 
-
-# ---------- targeted ablations ----------
 
 def strip_years(text):
     cleaned = re.sub(r"\b\d{4}\b", "", text)
@@ -116,8 +110,6 @@ def diagnose(scorer):
         print(f"  p(known)={p:.3f} pred={int(p > 0.5)}  \"{t}\"")
     print("--- (high p on empty/gibberish => default-known bias) ---")
 
-
-# ---------- per-claim delta debug ----------
 
 def dd_claim(claim, label, scorer):
     """Minimize claim to the words the probe needs to hold its full-claim verdict.
@@ -150,8 +142,6 @@ def dd_claim(claim, label, scorer):
         "full_text": claim,
     }
 
-
-# ---------- main ----------
 
 def pick_targets(df, cells, limit, items):
     if items:
@@ -223,9 +213,9 @@ def main():
         tok.pad_token = tok.eos_token
     tok.padding_side = "right"   # match cache_activations.py
     device = next(model.parameters()).device
-    buf, handles, n_layers = register_hooks(model)
+    buf, handles, _ = register_hooks(model)
 
-    scorer = Scorer(model, tok, buf, n_layers, n_pos, device,
+    scorer = Scorer(model, tok, buf, n_pos, device,
                     args.layer, args.point, idx, probe)
 
     if args.diagnose:

@@ -9,6 +9,10 @@ transfer* (train on past, test on future), not in-distribution accuracy.
 Usage:
     python linear_probes.py --acts activations/gemma-2-9b-it/ --point resid --pos -1
     python linear_probes.py --acts activations/gemma-2-9b-it/ --point resid --transfer
+
+note: *_test columns are accuracy at a 0.5 threshold, not auroc. classes are
+balanced (150/150 per transfer direction) so the two track closely, but don't
+call it auroc. --auroc adds *_auroc columns with the real rank statistic.
 """
 import argparse
 from pathlib import Path
@@ -17,7 +21,6 @@ import numpy as np
 import pandas as pd
 import torch
 
-# ---------- the probe ----------
 
 def sigmoid(z):
     # clip to avoid overflow in exp for large |z|
@@ -36,28 +39,25 @@ def train_logreg(X, y, lr=0.1, epochs=300, l2=1e-3, verbose=False):
     Loss:    mean cross-entropy + l2 * ||w||^2   # continuous, differentiable
     Grad:    dL/dw = X.T @ (p - y) / N + 2*l2*w  # the (p - y) error term is the key
              dL/db = mean(p - y)
-    Step:    w -= lr * dL/dw                      # walk downhill on the loss
+    Step:    w -= lr * dL/dw
     """
     N, D = X.shape
     w = np.zeros(D)
     b = 0.0
 
     for epoch in range(epochs):
-        # --- forward: activations -> probability ---
-        z = X @ w + b               # [N]  linear score (logit)
-        p = sigmoid(z)              # [N]  squashed to (0,1)
+        z = X @ w + b
+        p = sigmoid(z)
 
-        # --- loss (only for logging; the grad below doesn't need it) ---
+        # loss is only for logging; the grad below doesn't need it
         eps = 1e-9
         ce = -np.mean(y * np.log(p + eps) + (1 - y) * np.log(1 - p + eps))
         loss = ce + l2 * np.sum(w * w)
 
-        # --- backward: gradient of loss wrt params ---
-        error = p - y               # [N]  how wrong + which direction
+        error = p - y
         grad_w = X.T @ error / N + 2 * l2 * w
         grad_b = np.mean(error)
 
-        # --- step: nudge params opposite the gradient ---
         w -= lr * grad_w
         b -= lr * grad_b
 
@@ -76,7 +76,21 @@ def accuracy(X, y, w, b):
     return (predict(X, w, b) == y).mean()
 
 
-# ---------- data ----------
+def roc_auc(y, score):
+    """Rank-based AUROC = P(score[pos] > score[neg]). Ties get mid-ranks."""
+    y = np.asarray(y); score = np.asarray(score)
+    n1 = int((y == 1).sum()); n0 = int((y == 0).sum())
+    if n1 == 0 or n0 == 0:
+        return float("nan")
+    order = np.argsort(score, kind="mergesort")
+    ranks = np.empty(len(score), float)
+    ranks[order] = np.arange(1, len(score) + 1)
+    # average ranks for ties
+    _, inv, counts = np.unique(score, return_inverse=True, return_counts=True)
+    sums = np.zeros(len(counts)); np.add.at(sums, inv, ranks)
+    ranks = (sums / counts)[inv]
+    return (ranks[y == 1].sum() - n1 * (n1 + 1) / 2) / (n1 * n0)
+
 
 def standardize(X_train, X_test=None):
     """
@@ -123,22 +137,21 @@ def make_masks(meta, mode):
     return [("split", tr, ~tr)], y
 
 
-def fit_eval(X, y, tr, te, want_preds=False, **kw):
-    """Standardize on train, fit probe, return (train_acc, test_acc).
-    If want_preds, also return (score, pred) arrays for the TEST rows."""
+def fit_eval(X, y, tr, te, **kw):
+    """Standardize on train, fit probe, return (train_acc, test_acc, score).
+
+    score is P(known) per TEST row -- the raw output that --dump-preds writes
+    and that roc_auc() ranks. The accuracies threshold it at 0.5.
+    """
     Xtr, Xte = standardize(X[tr], X[te])
     w, b = train_logreg(Xtr, y[tr], **kw)
     tr_acc = accuracy(Xtr, y[tr], w, b)
     te_acc = accuracy(Xte, y[te], w, b)
-    if not want_preds:
-        return tr_acc, te_acc
-    score = sigmoid(Xte @ w + b)            # P(known) per test row
-    return tr_acc, te_acc, score, (score > 0.5).astype(int)
+    return tr_acc, te_acc, sigmoid(Xte @ w + b)
 
 
-# ---------- experiments ----------
-
-def run(acts_dir, point, positions, meta, mode, dump_preds=False, **kw):
+def run(acts_dir, point, positions, meta, mode, dump_preds=False, auroc=False,
+        **kw):
     """
     Train a probe for every (layer, pos) cell. Return DataFrame of results.
     Transfer mode evaluates both directions (p2f, f2p) per cell, side by side.
@@ -146,6 +159,9 @@ def run(acts_dir, point, positions, meta, mode, dump_preds=False, **kw):
     If dump_preds, also return a long per-prompt DataFrame (one row per
     test prompt × layer × pos × direction) joined to meta for easy/hard
     subset analysis. Returns (results_df, preds_df) in that case.
+
+    If auroc, add a {direction}_auroc column: rank AUROC on the same scores
+    the {direction}_test accuracy thresholds.
     """
     directions, y = make_masks(meta, mode)
     layers = discover_layers(acts_dir, point)
@@ -161,11 +177,14 @@ def run(acts_dir, point, positions, meta, mode, dump_preds=False, **kw):
             X = T[:, idx, :]
             row = {"layer": layer, "pos": idx}
             for name, tr, te in directions:
+                tr_acc, te_acc, score = fit_eval(X, y, tr, te, **kw)
+                row[f"{name}_train"] = tr_acc
+                row[f"{name}_test"] = te_acc
+                if auroc:
+                    row[f"{name}_auroc"] = roc_auc(y[te], score)
                 if dump_preds:
-                    tr_acc, te_acc, score, pred = fit_eval(
-                        X, y, tr, te, want_preds=True, **kw)
-                    te_pos = np.where(te)[0]               # row indices into meta
-                    m = meta.iloc[te_pos]
+                    pred = (score > 0.5).astype(int)
+                    m = meta.iloc[np.where(te)[0]]         # test rows, in order
                     pred_rows.append(pd.DataFrame({
                         "layer": layer, "pos": idx, "direction": name,
                         "item_idx": m["item_idx"].values,
@@ -175,10 +194,6 @@ def run(acts_dir, point, positions, meta, mode, dump_preds=False, **kw):
                         "score": score, "pred": pred,
                         "correct": (pred == y[te]).astype(int),
                     }))
-                else:
-                    tr_acc, te_acc = fit_eval(X, y, tr, te, **kw)
-                row[f"{name}_train"] = tr_acc
-                row[f"{name}_test"] = te_acc
             rows.append(row)
             summary = "  ".join(f"{n}_test {row[f'{n}_test']:.3f}"
                                 for n, _, _ in directions)
@@ -200,6 +215,9 @@ def main():
                    help="Cross-time transfer instead of in-distribution split")
     p.add_argument("--dump-preds", action="store_true",
                    help="Also write per-prompt predictions for easy/hard analysis")
+    p.add_argument("--auroc", action="store_true",
+                   help="Also report rank AUROC per direction (*_test is "
+                        "thresholded accuracy, which is not the same thing)")
     p.add_argument("--lr", type=float, default=0.1)
     p.add_argument("--epochs", type=int, default=300)
     p.add_argument("--l2", type=float, default=1e-3)
@@ -217,7 +235,7 @@ def main():
         positions = [args.pos]
 
     result = run(args.acts, args.point, positions, meta, mode,
-                 dump_preds=args.dump_preds, **kw)
+                 dump_preds=args.dump_preds, auroc=args.auroc, **kw)
     df, preds = result if args.dump_preds else (result, None)
 
     # write to {repo}/probe_results/{model}/probe_{point}_{mode}.csv

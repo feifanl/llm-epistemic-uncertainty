@@ -9,6 +9,10 @@ Output layout:
         L{layer}_mlp.pt
         meta.parquet           # N rows, aligned with tensors' row dim
         config.json            # run config snapshot
+
+n_pos matters downstream: probe csvs store the converted index, so pos 0 in a
+1-pos cache and pos 4 in a 5-pos cache are both the final token. cache
+everything at --n-pos 5 to keep comparisons across checkpoints unambiguous.
 """
 import argparse
 import json
@@ -24,8 +28,6 @@ from model_adapter import get_layers, attn_module, mlp_module
 PROMPT_TEMPLATE = 'Q: Is the following claim true? "{claim}"\nA:'
 PARAPHRASE_COLS = ["claim", "para_1", "para_2", "para_3", "para_4", "para_5"]
 
-
-# ---------- helpers ----------
 
 def slug(model_name: str) -> str:
     return model_name.replace("/", "_")
@@ -94,7 +96,7 @@ def build_prompts(df: pd.DataFrame) -> tuple[list[str], list[dict]]:
 
 
 @torch.no_grad()
-def run_batch(model, tok, prompts: list[str], buf, n_layers, n_pos, device):
+def run_batch(model, tok, prompts: list[str], buf, n_pos, device):
     """
     Forward pass on batch. Return dict[(layer, point)] -> tensor[B, n_pos, d_model].
     Slices last n_pos tokens of each sequence (right-padded → use attention mask).
@@ -170,7 +172,7 @@ def main():
 
     for i in tqdm(range(0, len(prompts), args.batch_size)):
         batch = prompts[i:i + args.batch_size]
-        out = run_batch(model, tok, batch, buf, n_layers, args.n_pos, device)
+        out = run_batch(model, tok, batch, buf, args.n_pos, device)
         for (layer, point), tensor in out.items():
             if point in args.points:
                 accum[(layer, point)].append(tensor)

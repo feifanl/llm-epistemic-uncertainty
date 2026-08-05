@@ -15,6 +15,10 @@ Writes a `confidence` column in place into every steering_results/*.csv
 (idempotent -- skips already-scored rows unless --force) so
 summarize_steering.py can pivot it like hedges.
 
+Gotcha: it writes back into the raw steering csvs in place. re-judging with a
+different model mixes scales silently -- use --force and re-score everything if
+you change --judge-model.
+
 Usage:
     python pipeline/judge_confidence.py
     python pipeline/judge_confidence.py --judge-model google/gemma-2-9b-it --force

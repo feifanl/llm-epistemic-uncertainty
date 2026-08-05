@@ -1,3 +1,8 @@
+"""
+word-level delta debugging (zeller's ddmin). generic implementation --
+probe_dd.py drives it with a probe-prediction "interesting" test. the __main__
+file-minimizer cli is unused here.
+"""
 from typing import Callable, List, TypeVar, Any
 
 # Define a generic type for the elements of the interesting_input list

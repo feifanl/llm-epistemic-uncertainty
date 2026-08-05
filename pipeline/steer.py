@@ -87,8 +87,6 @@ HEDGE_WORDS = [
 ]
 
 
-# ---------- steering vector ----------
-
 def steering_vector(X, y, method):
     """Return (v [D] float32, info str). X raw acts, y in {0,1} (1=known)."""
     if method == "diffmean":
@@ -127,8 +125,6 @@ def layer_vector(XL, y, args, loaded, seed_offset):
         v = (vhat * mean_hs).astype(np.float32)
     return v.astype(np.float32), mbar
 
-
-# ---------- steering hook ----------
 
 class Steerer:
     """Hook on one decoder layer's output residual, all positions.
@@ -176,8 +172,6 @@ class Steerer:
         self.handle.remove()
 
 
-# ---------- generation ----------
-
 def build_input(tok, question, device):
     # GPT-2 (no chat template) -> plain QA framing so the base model answers
     # instead of free-associating; chat models use their template.
@@ -218,13 +212,13 @@ def alpha_tag(a, mode):
     return "(->known)" if a > 0 else "(->unknown)"
 
 
-# ---------- main ----------
-
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--acts", type=Path, required=True)
     p.add_argument("--model", required=True)
-    p.add_argument("--layer", type=int, default=20)
+    p.add_argument("--layer", type=int, default=20,
+                   help="injection layer (default 20 = gemma-2-9b-it's; pick "
+                        "near the target model's probe peak)")
     p.add_argument("--layers", type=int, nargs="+", default=None,
                    help="Band intervention across these layers, each with its OWN "
                         "per-layer vector (e.g. --layers 16 17 18 19 20 21 22). "
@@ -383,7 +377,7 @@ def main():
             text = generate(model, tok, ids, args.max_new_tokens)
             hc = hedge_count(text)
             tag = alpha_tag(a, args.mode)
-            print(f"\n  alpha={a:+.0f} {tag}  hedges={hc}\n  {text}")
+            print(f"\n  alpha={a:+g} {tag}  hedges={hc}\n  {text}")
             rows.append({"question": q, "mode": args.mode, "alpha": a,
                          "hedges": hc, "text": text})
     set_alpha(0.0)
@@ -411,7 +405,7 @@ def main():
         lines += ["=" * 70, f"Q: {q}", ""]
         for r in (row for row in rows if row["question"] == q):
             tag = alpha_tag(r["alpha"], r["mode"])
-            lines.append(f"  alpha={r['alpha']:+.0f} {tag}  hedges={r['hedges']}")
+            lines.append(f"  alpha={r['alpha']:+g} {tag}  hedges={r['hedges']}")
             lines.append(f"  {r['text']}")
             lines.append("")
 

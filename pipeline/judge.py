@@ -1,7 +1,9 @@
 """
 LLM judge: score generated answers for EXPRESSED confidence with a local
-open-weight model (no API). This is the primary, cross-family metric -- the
-lexical scorer (confidence_score.py) is keyword-brittle and only a sanity tier.
+open-weight model (no API). This is the ALTERNATE judge -- it asks for a JSON
+rating. judge_confidence.py (p(yes) from the next-token logits) is what the
+paper reports; nothing here is behind a paper number. Kept because it also
+gives stance + factually_wrong, which the logit judge can't.
 
 The judge reads (question, answer) and returns:
     confidence      0-100   how assertive/certain the answer SOUNDS
@@ -80,8 +82,6 @@ INSTRUCTION = (
 )
 
 
-# ---------- prompt ----------
-
 def build_messages(question, answer):
     msgs = [{"role": "system", "content": SYSTEM}]
     for q, a, label in FEWSHOT:
@@ -91,8 +91,6 @@ def build_messages(question, answer):
                  "content": INSTRUCTION.format(q=question, a=answer)})
     return msgs
 
-
-# ---------- robust JSON parse ----------
 
 def parse_judge(out):
     """Extract {confidence, stance, factually_wrong} from model text. Returns
@@ -117,8 +115,6 @@ def parse_judge(out):
             "judge_factual_wrong": "true" in out.lower(),
             "judge_parse_ok": False}
 
-
-# ---------- model ----------
 
 def load_judge(name, load_4bit, dtype):
     torch_dtype = {"fp16": torch.float16, "bf16": torch.bfloat16}[dtype]
@@ -151,8 +147,6 @@ def judge_batch(model, tok, msg_lists, max_new):
     return [tok.decode(g, skip_special_tokens=True).strip() for g in gen]
 
 
-# ---------- input loading ----------
-
 def parse_results_md(md):
     """Results-markdown -> DataFrame[question, alpha, text]. Mirrors steer.py's
     writer (Q: line, then 'alpha=±N' headers and free-text answer bodies)."""
@@ -163,6 +157,8 @@ def parse_results_md(md):
                          "text": "\n".join(buf).strip()})
     for line in md.splitlines():
         mq = re.match(r"\s*Q:\s*(.*)", line)
+        # int-only: matches the old raw-alpha runs this parser exists for.
+        # relative-alpha runs are csv-first, don't feed their .md here.
         ma = re.match(r"\s*alpha=([+-]?\d+)", line)
         if mq:
             flush(); buf.clear(); q = mq.group(1).strip(); alpha = None
@@ -185,8 +181,6 @@ def load_input(path):
         raise ValueError(f"{path} missing columns {need - set(df.columns)}")
     return df
 
-
-# ---------- main ----------
 
 def main():
     p = argparse.ArgumentParser()

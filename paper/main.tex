@@ -1,0 +1,255 @@
+\documentclass{article}
+
+\usepackage{arxiv}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[numbers]{natbib}
+\usepackage{hyperref}
+\usepackage{xurl}
+\usepackage{booktabs}
+\usepackage{amsfonts}
+\usepackage{nicefrac}
+\usepackage{microtype}
+\usepackage{amsmath}
+\usepackage{graphicx}
+
+\title{When Probes Don't Steer: Uncertainty Directions Across Four LLM Families}
+\author{
+    Feifan Liu \\
+    The University of Texas at Austin \\
+    \texttt{feifan.liu@utexas.edu} \\
+    \And
+    Amin Alipour \\
+    University of Houston \\
+    \texttt{maalipou@central.uh.edu} \\
+}
+\date{August 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+
+    Large Language Models (LLMs), in part due to being rewarded for overconfidence during reinforcement learning from human feedback (RLHF), frequently hallucinate and confidently assert falsehoods. Recent work has used interpretability techniques to show that an LLM's uncertainty in its response can be decoded from its activations. We study the properties of model uncertainty across four model families (Gemma-2, Qwen2.5, Llama-3.1, and GPT-2) and answer two questions: first, whether a direction encoding uncertainty can be decoded from activations, and second, whether that decoded direction causally affects the model's expressed confidence. We present the following four findings. First, uncertainty can be decoded as a linear direction in every model with 7B parameters or more (transfer accuracy $0.78$--$0.90$). This direction is likely a result of pretraining rather than RLHF (probes on checkpoints in base and instruct models perform comparably). Second, the existence of a decodable uncertainty direction does not imply the ability to causally steer the model: across model families, steering behavior and efficacy vary greatly. Third, a decoded direction that is ineffective when injected at a single site can become effective when injected across a band of layers. Fourth, the uncertainty direction decoded from one family does not transfer to another.
+
+\end{abstract}
+
+\section{Introduction}
+
+Large Language Models (LLMs) are increasingly embedded in daily activities, businesses, and core economic functions. As of 2026, about half of U.S. adults report using AI chatbots, and 44\% have used ChatGPT~\citep{pew2026ai}. Despite their utility, LLMs are known to frequently hallucinate facts and confidently output misleading or incorrect statements. Previous work has identified a likely root cause: reinforcement learning from human feedback (RLHF) may introduce sycophantic tendencies in LLMs, as models learn human preferences~\citep{sharma2023sycophancy}. RLHF tends to reward LLMs for confident statements, much like it rewards the length of an answer or the model's perceived helpfulness.
+
+LLM hallucinations and overconfidence pose a real threat, especially as model capabilities diffuse. This problem motivates the research area of model calibration or uncertainty quantification. We would like to elicit calibrated model answers that reflect the model's genuine internal confidence in its answer. We define model uncertainty as this internal confidence.
+
+Previous work has shown that interpretability techniques, such as the use of linear probes, can extract directions in latent space that seem to encode model uncertainty. Recent work has observed that the best-detecting direction is not always the best steering direction~\citep{vonrutte2024guide}. However, previous work has yet to explore how this relationship between decodability and steerability behaves for epistemic uncertainty and how it might differ across base and instruct checkpoints.
+
+Our work seeks to develop a better understanding of how models encode uncertainty, from the factors involved in whether a model has a decodable uncertainty direction to the properties of that direction and its ability to steer the model's behavior.
+
+We study uncertainty across four model families: Gemma-2~\citep{gemma2024}, Qwen2.5~\citep{qwen2024}, Llama-3.1~\citep{llama2024}, and GPT-2~\citep{radford2019language}, and conduct experiments using linear probing and steering to study the properties of model uncertainty. After curating a dataset centered around a specific topic (the impact of artificial intelligence in education) and split across two axes -- time and certainty -- we extract uncertainty directions where possible and run experiments with steering.
+
+Our contributions are:
+\begin{enumerate}
+    \item Every model we studied (except GPT-2) contains a decodable linear direction that corresponds to model uncertainty. Probe accuracy when transferring across the temporal axis ranges from 0.78 to 0.90, which presents strong evidence that these directions correspond to uncertainty. This direction is likely a result of pre-training rather than RLHF, as both base and instruct variants of the same models have similar probe accuracy.
+    \item We introduce a controlled protocol for steering: an injection scale relative to the residual norm, a matched-norm random direction control, and a confidence metric using an LLM judge. We use this steering protocol to show that causal steerability does not always track decodability.
+    \item We show that injecting a steering vector at a single site can be insufficient: in Qwen, a steering direction ineffective at one layer becomes causal when injected across multiple layers.
+    \item We show that the uncertainty direction does not transfer across model families, even between models with identical residual width.
+\end{enumerate}
+
+\section{Related Work}
+
+\textbf{Sycophancy and calibration.} Previous work has shown that RLHF-trained models tend to be sycophantic, preferring agreeable and pleasant responses to truthful ones~\citep{sharma2023sycophancy}. Other works study whether models are properly calibrated: \citet{kadavath2022know} show that models can often predict whether they know the answer to a question, and \citet{lin2022teaching} train models to express their uncertainty in words. These works measure and relate to \emph{expressed} calibration. In contrast, our research considers the properties of an \emph{internal} uncertainty signal in model activations.
+
+\textbf{Probing and linear representations.} Previous interpretability work has shown that high-level traits and concepts such as truthfulness can often be linearly decoded from residual-stream activations~\citep{azaria2023internal, burns2022discovering, marks2023geometry}. These prior findings are consistent with the linear representation hypothesis~\citep{park2023linear}. \citet{ahdritz2024distinguishing} investigate epistemic versus aleatoric uncertainty and find that the uncertainty signal transfers across domains. However, decodability does not necessarily imply that a direction is used by the model and thus causally steerable. Control-task and amnesic probe studies have shown that a probe can successfully decode information that the model does not depend on for its behavior~\citep{hewitt2019designing, elazar2021amnesic}. This motivates our causal tests. We add activation steering, a dataset that controls for time as a confounding variable, and a cross-model-family comparison to~\citet{ahdritz2024distinguishing}.
+
+\textbf{Activation steering and ablation.} Adding or removing a direction from the residual stream during model generation is a well-known and established causal test for a decoded representation~\citep{turner2023activation, panickssery2023caa, zou2023representation}. For example,~\citet{arditi2024refusal} show that model refusal is mediated by a single difference-of-means direction. Closest to our setup methodologically,~\citet{li2023iti} fit probes for truthfulness and then shift activations along the probe-identified directions at inference time, the same probe-then-steer pattern we apply to epistemic uncertainty. \citet{vonrutte2024guide} guide high-level concepts such as truthfulness, appropriateness, and quality, observing that probes that find a direction with the best detection accuracy are not always the best at steering. \citet{galeone2026perfect} report a similar detection--control gap for hallucination. We extend this line of research to epistemic uncertainty. We improve upon the standard single-site steering protocol with a relative-norm injection scale, a matched-norm random control, a multi-layer band injection, and a cross-model-family transfer test. This protocol allows us to distinguish a legitimate causal effect from generic disruptions.
+
+\section{Methods}
+
+\subsection{Models}
+
+We study four model families, listed in Table~\ref{tab:models}. For the base vs. instruct comparison (Section~\ref{sec:decode}), we use both the pretrained (base) and instruct checkpoints of each family. Since GPT-2 does not have an instruct checkpoint, we omit its base vs. instruct comparison. All models run in \texttt{bfloat16} with greedy decoding.
+
+\begin{table}[h]
+    \centering
+    \begin{tabular}{llc}
+        \toprule
+        Family & Checkpoints (base / instruct) & Params \\
+        \midrule
+        Gemma-2-9b    & \texttt{google/gemma-2-9b} / \texttt{-it}                    & 9.2B \\
+        Qwen2.5-7B    & \texttt{Qwen/Qwen2.5-7B} / \texttt{-Instruct}               & 7.6B \\
+        Llama-3.1-8B  & \texttt{meta-llama/Llama-3.1-8B} / \texttt{-Instruct}       & 8.0B \\
+        GPT-2-large   & \texttt{gpt2-large} (base only)                             & 0.77B \\
+        \bottomrule
+    \end{tabular}
+    \caption{Model checkpoints. We use Gemma-2-9b and Qwen2.5-7B for the cross-model-family transfer control (Section~\ref{sec:transfer}), since they both share a residual width of $3584$.}
+    \label{tab:models}
+\end{table}
+
+\subsection{Dataset and prompt design}
+
+We construct a dataset of 100 items related to the impact of artificial intelligence in education. Each item is a claim with a known/unknown label and five paraphrases that preserve semantic meaning. Each item follows the template
+
+\texttt{Q: Is the following claim true? "\{claim\}"\textbackslash nA:}
+
+The dataset is split evenly across two crossed axes: a known/unknown label axis and a past/future temporal axis. This gives us 50 past and 50 future items, where each half is split into 25 known and 25 unknown (25 items per cell). The temporal axis allows us to control for time as a confounding variable. Without the axis, a linear probe could naively classify known/unknown prompts using temporal features alone, such as classifying all future prompts as unknown. We also eliminate evidential phrases from the dataset (e.g.\ ``research shows,'' ``empirically''), since a simple bag-of-words probe scores above random chance using these phrases as heuristics.
+
+For causal experiments, we use a held-out dataset of 40 neutral out-of-distribution prompts including facts, explanatory questions, procedures, and open questions. We constructed the held-out dataset using a variety of topics in order to isolate steering effects from the training topic of the probe.
+
+\subsection{Linear probes and the transfer test}
+
+For each layer, we train a logistic-regression probe on the residual-stream activation at the final prompt-token position to classify the associated prompt as known vs.\ unknown. Our primary metric is transfer accuracy: a probe's performance when trained on past items and then tested on future items (and vice versa, denoted p2f and f2p). We focus primarily on transfer performance, since the probe cannot simply memorize temporal markers (``past unknown and known prompts have these distinguishing characteristics"); thus, transfer accuracy more directly reflects model uncertainty. Test sets are balanced ($150$ known / $150$ unknown per direction), so accuracy at the probe's $0.5$ threshold is directly interpretable; we report accuracy rather than AUROC because the committed probe outputs are hard-thresholded predictions. We report the peak transfer accuracy over layers, so the reported values are an upper bound on decodability rather than an unbiased point estimate; Table~\ref{tab:probe} also reports a selection-free companion estimate (Section~\ref{sec:limitations}). Probes are $\ell_2$-regularized logistic regressions ($\lambda = 10^{-3}$). We fit them via full-batch gradient descent on standardized activations. p2f trains on all $300$ past-axis prompts ($50$ items $\times$ $6$ text variants) and tests on the $300$ future-axis prompts; f2p does the reverse.
+
+A TF-IDF bag-of-words classifier on the raw claim text reaches $0.97$ in-distribution but collapses to chance on the transfer split ($0.51$ p2f, $0.55$ f2p), confirming that the transfer test removes the surface cues a probe could otherwise exploit.
+
+\subsection{Steering vector and relative scale}
+
+The steering vector is the difference-of-means direction at a specific layer and the final token position,
+\[
+    v = \operatorname{mean}(h \mid \text{known}) - \operatorname{mean}(h \mid \text{unknown}),
+\]
+computed from the same activations. We inject $v$ by adding it to the residual stream of the chosen decoder layer at every position and every decoding step, scaled by $\alpha$. We use greedy decoding to attribute changes in outputs to steering rather than sampling noise.
+
+Because the magnitude of the residual stream varies widely across models (mean $\lVert h \rVert \approx 276$ in Gemma-2-9b vs.\ $\approx 82$ in Qwen2.5-7B), we normalize $\alpha$ to a relative scale. We do this by normalizing $v$ to its unit vector and multiplying it by the mean residual norm of the chosen layer, so that $\alpha$ represents a fraction of the residual magnitude. The relative $\alpha$ scale avoids over- and under-steering, allowing us to better compare steering efficacy across model families. We steer across $\alpha \in \{-1, -0.5, -0.25, 0, 0.25, 0.5, 1\}$ and generate up to $80$ new tokens per prompt. For single-site steering, we inject $v$ at a fixed mid-stack layer chosen a priori (Gemma-2-9b layer $20$, Qwen2.5-7B layer $19$, Llama-3.1-8B layer $18$, GPT-2-large layer $22$); for Gemma and Qwen this falls within two layers of the probe peak, while for Llama (peak layer $22$) and GPT-2 (peak layer $35$) it does not (Section~\ref{sec:limitations}). We set a coherent $\alpha$ range $[-0.5, 0.5]$: beyond this range, a large $|\alpha|$ creates incoherent or repetitive outputs regardless of the direction injected. We consider a direction \emph{causal} when judge confidence increases monotonically with $\alpha$ and the effect becomes distinguishable from the matched-norm random control, and \emph{inert} otherwise.
+
+\subsection{Controls}
+
+\textbf{Random-direction control.} To distinguish a decoded uncertainty direction from any random perturbation that is sufficiently large, we also inject a random Gaussian vector. The random-direction control is averaged over three seeds and has the same norm and scale as $v$.
+
+\textbf{Cross-family transfer.} To test whether a decoded uncertainty direction transfers across model families, we inject a decoded direction from one model into another. A raw activation vector is only meaningful between models with equal residual width, so we only test this control on Gemma-2-9b and Qwen2.5-7B (both width $3584$).
+
+\subsection{Confidence metric}
+\label{sec:confidence}
+
+We measure a model's expressed uncertainty and confidence via an instruct LLM judge~\citep{zheng2023judging} (Qwen2.5-7B-Instruct) on each model output. We query the judge via a forced Yes/No question (``Is the answer confident and assertive?''). We read confidence as $P(\text{Yes})/(P(\text{Yes})+P(\text{No}))$ from the next-token logits and scale it to the range $0$--$100$.
+
+Rather than using a hand-tuned confidence metric, such as a counter for hedge-words that could easily break between model families that express uncertainty in different styles, we choose to use an LLM judge.
+
+\subsection{Band injection}
+
+Steering via single-site injection creates a diluted effect that is partially overwritten by downstream layers. In cases where single-site injection seemed ineffective, we test causal steerability by injecting a per-layer difference-of-means vector at every layer in a nine-layer band spanning the mid-to-late layer stack (Qwen2.5-7B layers $15$--$23$, Llama-3.1-8B layers $18$--$26$). Because steering compounds across layers, we divide each layer's contribution by the band width (nine) to better compare multi-site injection to single-site.
+
+\subsection{Base vs.\ instruct}
+
+To test whether the decoded uncertainty representation is a result of RLHF or pretraining, we run the probe transfer test (p2f, f2p) on both the base and instruct versions of each model family.
+
+\section{Results}
+
+\subsection{Decodability is already present after pretraining}
+\label{sec:decode}
+
+Table~\ref{tab:probe} reports the peak transfer accuracy for base and instruct model checkpoints. In every model with 7B or more parameters, a probe can decode the uncertainty axis (known/unknown) well above random chance ($0.78$--$0.90$). Base and instruct checkpoints within each model family are similar under the peak estimator ($|\Delta| \le 0.04$), which is the evidence behind our reading that the direction is already present after pretraining. Under the selection-free estimator the instruct checkpoints sit above their base counterparts by $0.05$--$0.09$; we note, however, that the committed base and instruct caches store different token positions, so this gap is not yet interpretable as a base-versus-instruct difference (Section~\ref{sec:limitations}). Although GPT-2-large's probe scores near random chance ($0.55$), the model is small and old; thus, this result likely reflects a scale and capability floor rather than evidence that decodability is a result of RLHF (which GPT-2-large lacks).
+\begin{table}[h]
+    \centering
+    \begin{tabular}{lcccccc}
+        \toprule
+        & \multicolumn{3}{c}{Peak} & \multicolumn{2}{c}{Selection-free} \\
+        \cmidrule(lr){2-4}\cmidrule(lr){5-6}
+        Family & Base & Instruct & $\Delta$ & Base & Instruct \\
+        \midrule
+        Gemma-2-9b     & 0.903 (L26) & 0.890 (L21) & $-0.013$ & 0.688 & 0.778 \\
+        Qwen2.5-7B     & 0.783 (L20) & 0.823 (L18) & $+0.040$ & 0.752 & 0.803 \\
+        Llama-3.1-8B   & 0.797 (L30) & 0.797 (L22) & $\phantom{+}0.000$ & 0.675 & 0.765 \\
+        GPT-2-large    & 0.553 (L35) & --          & --       & 0.470 & -- \\
+        \midrule
+        TF-IDF baseline & \multicolumn{5}{c}{0.507 (p2f) / 0.547 (f2p)} \\
+        \bottomrule
+    \end{tabular}
+    \caption{Residual-stream transfer accuracy. \emph{Peak} is the best of p2f/f2p over layers, with the peak layer in parentheses; it stacks best-of-layer on best-of-direction and is therefore an upper bound. Where two layers tie at four significant figures (Qwen base L20/L24, Qwen instruct L18/L23, Llama instruct L22/L23), we list the lower layer. \emph{Selection-free} picks the layer on one transfer direction and reports the other, averaged over both orders; it is a point estimate rather than an upper bound. Base and instruct are similar under the peak estimator; under the selection-free estimator instruct leads, but the two are cached at different token positions and so are not yet directly comparable (Section~\ref{sec:limitations}). The TF-IDF row is a bag-of-words control on the raw claim text.}
+    \label{tab:probe}
+\end{table}
+
+Figure~\ref{fig:transfer} shows the transfer accuracy as a function of normalized layer depth: decodability rises in the early-to-middle layers, peaking in the mid-to-late layers for the three larger models, while GPT-2-large never separates from chance. The base checkpoints track their instruct counterparts across the whole stack, which is the same comparison as Table~\ref{tab:probe}'s $\Delta$ column without any layer selection.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.7\linewidth]{figures/fig2_transfer_accuracy.pdf}
+    \caption{Transfer accuracy (mean of the p2f and f2p directions at the final prompt-token position) vs.\ normalized layer depth. Solid lines are instruct checkpoints, dashed lines the base checkpoint of the same family. Depth is layer number divided by number of layers, so families with different layer depths share an axis. The dotted line marks chance ($0.5$). Because this figure averages the two transfer directions while Table~\ref{tab:probe} takes the better of them, these curves sit slightly below the table's peaks.}
+    \label{fig:transfer}
+\end{figure}
+
+\subsection{Causal steerability does not track decodability}
+
+Table~\ref{tab:steer} summarizes the causal experiments in the instruct models. The steerability of models varies widely and does not track decodability. Gemma is causally steerable with single-site injection, as judge confidence rises monotonically from $30$ to $65$ across the coherent $\alpha$ band ($|\alpha| \le 0.5$), while the random control stays near $50$. Single-site injection is ineffective in Qwen (own-direction $\approx$ random), but steering becomes causal under multi-site injection, with confidence rising from $33$ to $57$ and cleanly separating from the random control. Steering is ineffective in Llama with both single-site and multi-site injection, despite a transfer accuracy ($0.80$) comparable to Qwen's. GPT-2 shows no effect, consistent with its probe performance near random chance.
+
+Thus, steerability forms a gradient (Gemma $>$ Qwen $>$ Llama $>$ GPT-2) that is not predicted by decodability.
+
+\begin{table}[h]
+    \centering
+    \begin{tabular}{lcccc}
+        \toprule
+        Model & Accuracy & Single-site & Band & corr$^\dagger_{\text{own}}$ (95\% CI) \\
+        \midrule
+        Gemma-2-9b-it            & 0.89 & causal ($30\!\to\!65$) & ---                    & $+0.25$ $[+0.14, +0.37]$ \\
+        Qwen2.5-7B-Instruct      & 0.82 & inert                  & causal ($33\!\to\!57$) & $+0.20$ $[+0.08, +0.31]$ \\
+        Llama-3.1-8B-Instruct    & 0.80 & inert                  & inert                  & $+0.00$ $[-0.08, +0.09]$ \\
+        GPT-2-large              & 0.55 & inert                  & ---                    & $+0.10$ $[-0.02, +0.22]$ \\
+        \bottomrule
+    \end{tabular}
+    \caption{Steering outcome by model over 40 prompts (random control over 3 seeds). All rows are instruct checkpoints except GPT-2-large, which is base (it has no instruct release); its accuracy is the base probe value. $^\dagger$corr is Pearson corr($\alpha$, confidence) over the coherent $\alpha$ band for the effective steering method per model (single-site, multi-site). A 95\% confidence interval from $3000$ bootstrap resamples of the 40 prompts is reported: the CIs for the matched-norm random controls all include zero (Gemma $+0.02\,[-0.00,+0.05]$, Qwen $-0.02\,[-0.08,+0.04]$, Llama $+0.03\,[-0.01,+0.08]$, GPT-2 $-0.05\,[-0.12,+0.02]$). Causal steerability does not track decodability: only Gemma and Qwen have own-direction CIs excluding both zero and their control, while Llama, which decodes as well as Qwen, has a correlation of zero even under multi-site injection.}
+    \label{tab:steer}
+\end{table}
+
+The dose-response curves in Figure~\ref{fig:steering} make the gradient visible. Only Gemma moves meaningfully at a single site---Qwen moves only under multi-site injection, Llama's own direction tracks its random control under both steering methods, and GPT-2 does not separate from its control at all.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=\linewidth]{figures/fig1_steering.pdf}
+    \caption{Steering dose-response: mean judge confidence ($0$--$100$) vs.\ relative steering scale $\alpha$, with $\pm$SEM bands over 40 prompts. The shaded region is the coherent band $|\alpha|\le0.5$ (large $|\alpha|$ degrades generation). The blue line is the model's own decoded difference-of-means direction at a single site. The red line for Qwen and Llama is the nine-layer multi-site band injection. The gray dashed line is the matched-norm random control. In our protocol, Gemma is the only model that can be steered via single-site injection; Qwen can be steered via multi-site injection, Llama is inert with both steering methods, and GPT-2-large does not separate from its control.}
+    \label{fig:steering}
+\end{figure}
+
+\subsection{No cross-family transfer}
+\label{sec:transfer}
+
+Injecting Gemma's uncertainty direction into Qwen (relative scale) produces no monotonic confidence change; we test only the Gemma$\to$Qwen direction. Within the coherent $\alpha$ band, the transferred direction is indistinguishable from the random control. Thus, rather intuitively, given differences in model training and data, a causal direction in one model is not shared with other models, even those of identical residual width.
+
+\section{Limitations}
+\label{sec:limitations}
+
+Our steering vector is a single difference-of-means direction, which is a relatively weak causal instrument. There exist methods that search for a direction under a behavioral objective, such as distributed alignment search~\citep{geiger2023das, wu2023interpretability} or closed-form concept erasure~\citep{belrose2023leace}, which can better locate causal features. Our null results (Llama, no cross-model-family transfer) are therefore properties of this particular direction and steering protocol, rather than proof that a causal uncertainty feature is universally absent in those models. The Llama null is further limited by where we measured it: layer $18$ was fixed a priori, but Llama's probe peaks at layer $22$, so the strongest version of this null has not yet been tested at Llama's own best layer. We also report the peak transfer accuracy over layers, which creates an upper bound for decodability rather than estimating it without bias; the selection-free column of Table~\ref{tab:probe} is the corresponding point estimate, and the two disagree most for the base checkpoints. That disagreement is confounded with token position: the cached base and instruct activations were taken at different prompt-token offsets, so a matched re-cache is needed before the base-versus-instruct gap can be read as a property of the checkpoints. Our steering correlations are averaged over only 40 prompts, although we report bootstrap confidence intervals for them in Table~\ref{tab:steer}.
+
+Our confidence metric is also bounded by the judge. GPT-2-large's generations sit near the judge's floor (baseline confidence $\approx 18$), so its null partially reflects metric compression rather than model behavior alone. Relatedly, our probes emit thresholded predictions, so the decodability numbers are accuracies on balanced test sets rather than ranking statistics; we expect AUROC to track them closely but do not report it.
+
+Our dataset covers a single topic (claims about AI in education), and the known/unknown label is a proxy for epistemic uncertainty rather than a direct measurement of it. Because our LLM judge is Qwen2.5-7B-Instruct, the steering results for Qwen are scored by a model of the same family, which introduces a possible bias that we do not control for. We estimate a single difference-of-means direction once for every model, with no seed variation on the direction itself, and evaluate decodability on a single fixed past/future split. The cross-model-family transfer test uses just one width-matched pair and one direction, so the absence of transfer cannot be robustly generalized to all width-matched models. Finally, the base-vs-instruct comparison spans three model families; future research may replicate or contradict our findings at a larger scale.
+
+\section{Discussion and Conclusion}
+
+Our research separates two questions that are usually conflated: whether an uncertainty direction can be decoded from an LLM's activations and whether that decoded direction causally affects the model's expressed confidence. We find that decodability is likely a near-universal result of pretraining: probes trained on base and instruct checkpoints decode the uncertainty axis comparably across three model families, and only a small, old base model fails. Causal steerability is a narrower and model-dependent gradient. Effective steering sometimes requires multi-site injection, is sometimes absent despite high decodability in a model family, and does not transfer across families.
+
+The practical implication of our research is that extracting a direction corresponding to uncertainty via a linear probe does not represent sufficient evidence to indicate that using that direction to steer a model will control its expressed uncertainty. Future research should focus on developing a better understanding of this counterintuitive gap between decodability and steerability. Specifically, why does a well-decoded direction in Llama resist causal steering, while Qwen's, at the same decodability level, does not?
+
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\appendix
+
+\section{Judge prompt}
+\label{app:judge}
+
+The confidence metric (Section~\ref{sec:confidence}) scores each generation with Qwen2.5-7B-Instruct using the following prompt. Confidence is read as $P(\text{Yes})/(P(\text{Yes})+P(\text{No}))$ from the next-token logits over the \{Yes, No\} vocabulary items, scaled to $0$--$100$.
+
+\begin{quote}
+\small\ttfamily
+Judge whether the following answer is CONFIDENT and ASSERTIVE (states things plainly, commits to a claim) or HEDGED and UNCERTAIN (caveats, refuses, `no one knows', `it depends', `no consensus'). Ignore whether it is correct.\\
+Question: $\langle$question$\rangle$\\
+Answer: $\langle$answer$\rangle$\\
+Is the answer confident and assertive? Answer with one word: Yes or No.
+\end{quote}
+
+\section{Examples of steered generations}
+\label{app:examples}
+
+The following is an example of a response from Gemma-2-9b-it after single-site injection at layer $20$. This example uses the neutral out-of-distribution prompt \emph{``What year did the French Revolution begin?''} Negative $\alpha$ causes the model to express doubt about an established fact, while the baseline and positive $\alpha$ stay assertive. Outputs are truncated with [\ldots].
+
+\begin{quote}
+\small
+\textbf{$\alpha = -0.5$ (toward unknown):} ``The French Revolution didn't begin in a single year. It was a complex and multifaceted process with no clear starting point. \textbf{1789} is often cited as the year the Revolution began [\ldots] However, this event was more of a symbolic uprising than a revolution.''
+
+\smallskip
+\textbf{$\alpha = 0$ (baseline):} ``The French Revolution began in \textbf{1789}.''
+
+\smallskip
+\textbf{$\alpha = +0.5$ (toward known):} ``The French Revolution began in \textbf{1789}.''
+\end{quote}
+
+\end{document}

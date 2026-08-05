@@ -1,4 +1,5 @@
 __pycache__/
+*.pyc
 .cache/
 
 .env
@@ -6,10 +7,18 @@ __pycache__/
 # Docs
 docs/
 
+# Early gemma raw-alpha run + the unused judge.py pass. No paper number
+# depends on them; kept locally as provenance.
+archive/
+
 # Venv
 venv/
 
 # Cached activation tensors (large, cache_activations.py regenerates)
 activations/
+hf_cache/
+
+# Derived plots, regenerable from the committed csvs (51 MB otherwise)
+plots/
 
 .claude

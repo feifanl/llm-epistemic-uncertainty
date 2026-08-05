@@ -36,23 +36,8 @@ import pandas as pd
 
 from linear_probes import (
     sigmoid, standardize, train_logreg, load_tensor, discover_layers, make_masks,
+    roc_auc,
 )
-
-
-def roc_auc(y, score):
-    """Rank-based AUROC = P(score[pos] > score[neg]). Ties get mid-ranks."""
-    y = np.asarray(y); score = np.asarray(score)
-    n1 = int((y == 1).sum()); n0 = int((y == 0).sum())
-    if n1 == 0 or n0 == 0:
-        return float("nan")
-    order = np.argsort(score, kind="mergesort")
-    ranks = np.empty(len(score), float)
-    ranks[order] = np.arange(1, len(score) + 1)
-    # average ranks for ties
-    _, inv, counts = np.unique(score, return_inverse=True, return_counts=True)
-    sums = np.zeros(len(counts)); np.add.at(sums, inv, ranks)
-    ranks = (sums / counts)[inv]
-    return (ranks[y == 1].sum() - n1 * (n1 + 1) / 2) / (n1 * n0)
 
 
 def diffmean_unit(X, y, tr):

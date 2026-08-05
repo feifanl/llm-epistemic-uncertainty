@@ -2,7 +2,7 @@
 PCA 2D scatter per layer, colored by cell. Pilot viz for activations.
 
 Usage:
-    python scripts/viz_pca.py --acts activations/gemma-2-2b-it/ --point resid --pos -1
+    python viz/visualize_activations.py --acts activations/gemma-2-2b-it/ --point resid --pos -1
 """
 import argparse
 from pathlib import Path
