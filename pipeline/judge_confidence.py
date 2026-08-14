@@ -11,7 +11,7 @@ forced Yes/No ("is this answer confident and assertive?") and read the
 next-token logits: confidence = P(Yes) / (P(Yes)+P(No)) in [0,1], scaled to
 0-100. Continuous, parse-free, and comparable across judges.
 
-Writes a `confidence` column in place into every steering_results/*.csv
+Writes a `confidence` column in place into every steering_results/judge_qwen/*.csv
 (idempotent -- skips already-scored rows unless --force) so
 summarize_steering.py can pivot it like hedges.
 
@@ -74,7 +74,7 @@ def score_one(model, tok, device, question, answer, yes_ids, no_ids,
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--results", type=Path, default=Path("steering_results"))
+    p.add_argument("--results", type=Path, default=Path("steering_results/judge_qwen"))
     p.add_argument("--judge-model", default="Qwen/Qwen2.5-7B-Instruct",
                    help="HF instruct model used as the rater.")
     p.add_argument("--dtype", choices=["fp16", "bf16"], default="bf16")

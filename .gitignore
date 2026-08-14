@@ -22,3 +22,14 @@ hf_cache/
 plots/
 
 .claude
+
+# pytest
+.pytest_cache/
+
+# local overleaf bundle, not part of the repo
+paper/overleaf_upload.zip
+paper/*.aux
+paper/*.log
+paper/*.out
+paper/*.bbl
+paper/*.blg

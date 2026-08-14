@@ -85,7 +85,7 @@ def main():
 
     cfg_npos = load_tensor(args.acts, layers[0], args.point).shape[1]
     idx = args.pos if args.pos >= 0 else cfg_npos + args.pos
-    print(f"Necessity (ablate v_hat) [{mode}] {args.point} pos{idx} — "
+    print(f"Necessity (ablate v_hat) [{mode}] {args.point} pos{idx}, "
           f"{len(layers)} layers\n"
           f"{'L':>3} {'dir':>4} {'full':>6} {'ablated':>8} {'random':>7} "
           f"{'drop':>6} {'specific?':>9}")

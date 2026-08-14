@@ -1,6 +1,6 @@
 """
 Lexical baseline: how well does a dumb TEXT classifier separate known/unknown
-from the claim string alone — no model activations?
+from the claim string alone, no model activations?
 
 This is the control floor for linear_probes.py. A probe layer is only
 "finding uncertainty" to the extent it BEATS this number. In particular:
@@ -32,7 +32,7 @@ PARAPHRASE_COLS = ["claim", "para_1", "para_2", "para_3", "para_4", "para_5"]
 
 
 def expand(df):
-    """Paraphrase-expand to one row per (item, paraphrase) — matches the
+    """Paraphrase-expand to one row per (item, paraphrase), matches the
     rows the probe is trained on (see cache_activations.build_prompts)."""
     rows = []
     for r in df.itertuples():

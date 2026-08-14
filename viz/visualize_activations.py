@@ -73,7 +73,7 @@ def plot_pos(acts, point, pos, layers, meta, out=None):
     fig.legend(handles=handles, loc="lower center", ncol=4,
                bbox_to_anchor=(0.5, -0.01), fontsize=10)
 
-    fig.suptitle(f"PCA per layer — {model} | {point} | pos={pos}",
+    fig.suptitle(f"PCA per layer, {model} | {point} | pos={pos}",
                  fontsize=13, y=1.00)
     fig.tight_layout()
 

@@ -10,9 +10,9 @@ Replaces steer.py's old substring `hedge_count`, which was broken:
 
 lexical_score(): fast, free, offline. Word-boundary regex, BI-directional
 (hedge + assert lexicons), normalized per sentence. Use as a sanity signal and
-no-GPU fallback. Still keyword-brittle across model families -- the llm judge
-(judge_confidence.py, p(yes) from logits) is the primary cross-family metric;
-judge.py is an alternate json-rating judge that isn't behind any paper number.
+no-GPU fallback. Still keyword-brittle across model families, so the llm
+judge (judge_confidence.py, p(yes) from logits) is the primary cross-family
+metric and the only one behind a paper number.
 
 The headline number is `net = assert_rate - hedge_rate`: higher = more
 confident/assertive, lower = more hedged/uncertain. Steering toward "known"

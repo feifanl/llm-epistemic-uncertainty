@@ -1,38 +1,38 @@
 """
-Steer the model along the known<->unknown direction and watch generation shift.
+Inject the known<->unknown direction into the residual stream during generation.
 
-This is the causal test the probe alone can't give. The probe *decodes* an
-uncertainty direction from activations; steering *injects* it and asks whether
-the model's behavior moves the way the direction claims it should. If adding the
-"unknown" direction makes the model hedge on an unrelated history/cooking
-question, the direction is causal for expressed uncertainty — not a decoded
-correlate of the dataset.
+The probe decodes an uncertainty direction; this asks whether the model actually
+uses it. If adding the "unknown" direction makes the model hedge on an unrelated
+history or cooking question, the direction is causal for expressed uncertainty
+rather than a correlate of the dataset.
 
-Direction (default: diff-of-means, the robust steering choice):
+Direction (default diff-of-means):
     v = mean(act | known) - mean(act | unknown)     # raw activation space
-at one (layer, point, pos), from cached activations. alpha=+1 adds one full
-known-minus-unknown gap (toward known/confident); alpha<0 steers toward unknown.
+at one (layer, point, pos), from cached activations. A forward hook on the
+decoder layer adds alpha * v to its output hidden state at every position and
+every decode step, the same point the probe reads. alpha > 0 steers toward
+known/confident, alpha < 0 toward unknown.
 
-Injection: a forward hook on decoder layer `layer` adds alpha * v to the residual
-stream (the layer's output hidden state) at every position, every decode step --
-the same point the probe reads.
+With --alpha-mode relative, v is unit-normalized and rescaled to the layer's mean
+residual norm, so alpha is a fraction of residual magnitude and is comparable
+across models whose residual norms differ by 3x. This is what the paper uses.
 
-Note: greedy decoding (do_sample=False) so any output change is attributable to
-the steering vector, not sampling noise.
+Decoding is greedy (do_sample=False) so output changes aren't sampling noise.
 
-Ablation (the necessity test, complementary to steering's sufficiency): instead
-of adding the direction, remove the residual's component along it and watch
-whether the model loses its known/unknown stance. Run on the dataset's own
-prompts (--prompts), where the model has a natural confidence level to lose.
+--mode ablate is the complementary necessity test: remove the residual's
+component along v instead of adding it, and see whether the model loses its
+known/unknown stance. Run it on the dataset's own prompts, where there is a
+natural confidence level to lose.
 
 Usage:
-    # steering (sufficiency)
+    # steering, relative alpha (the paper's protocol)
     python steer.py --acts activations/gemma-2-9b-it/ --model google/gemma-2-9b-it \
-        --layer 20 --point resid --pos -1 --alphas -8 -4 0 4 8
+        --layer 20 --alpha-mode relative --alphas -1 -0.5 0 0.5 1 \
+        --prompts prompts_eval.txt --experiment own
 
-    # ablation (necessity); 0=baseline, 1=full mean-ablation
+    # ablation; 0=baseline, 1=full mean-ablation
     python steer.py --acts activations/gemma-2-9b-it/ --model google/gemma-2-9b-it \
-        --layer 20 --point resid --pos -1 --mode ablate --prompts unknown_qs.txt
+        --layer 20 --mode ablate --prompts unknown_qs.txt
 """
 import argparse
 import json
@@ -269,7 +269,7 @@ def main():
                         "'transfer' if --direction else 'own'.")
     p.add_argument("--out", type=Path, default=None,
                    help="Markdown output path. Default: "
-                        "steering_results/{model_slug}__{experiment}.md (CSV "
+                        "steering_results/judge_qwen/{model_slug}__{experiment}.md (CSV "
                         "sibling). --out sets the .md path; CSV mirrors it.")
     args = p.parse_args()
     if args.alphas is None:
@@ -409,7 +409,7 @@ def main():
             lines.append(f"  {r['text']}")
             lines.append("")
 
-    # Default to steering_results/{slug}__{experiment}.md so per-model, per-run
+    # Default to steering_results/judge_qwen/{slug}__{experiment}.md so per-model, per-run
     # outputs never overwrite each other; CSV mirrors the .md path for the
     # summarizer to aggregate across runs.
     repo_root = args.acts.parent.parent
@@ -419,7 +419,7 @@ def main():
     stem = f"{slug(args.model)}__{args.experiment}"
     if args.random_dir:
         stem += f"_s{args.seed}"
-    out = args.out or (repo_root / "steering_results" / f"{stem}.md")
+    out = args.out or (repo_root / "steering_results/judge_qwen" / f"{stem}.md")
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text("\n".join(lines), encoding="utf-8")
 

@@ -12,7 +12,7 @@ Fig 2  transfer accuracy vs normalized layer depth, four instruct models with
 The probe csvs' *_test columns are accuracy at a 0.5 threshold, not auroc; see
 pipeline/linear_probes.py.
 
-Data: steering_results/*.csv (confidence col from judge_confidence.py),
+Data: steering_results/judge_qwen/*.csv (confidence col from judge_confidence.py),
       probe_results/<slug>/probe_resid_transfer.csv.
 
 Usage:
@@ -25,7 +25,7 @@ import numpy as np
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parent.parent
-STEER = ROOT / "steering_results"
+STEER = ROOT / "steering_results/judge_qwen"
 PROBE = ROOT / "probe_results"
 OUT = ROOT / "paper" / "figures"
 BAND = 0.5  # coherent steering band |alpha| <= BAND
@@ -38,12 +38,12 @@ PANELS = [
     ]),
     ("Qwen/Qwen2.5-7B-Instruct", "Qwen2.5-7B-Instruct", [
         ("own", "single-site", dict(color="C0", marker="o")),
-        ("band_own", "band (L15-23)", dict(color="C3", marker="s")),
+        ("band_own_L15-23", "band (L15-23)", dict(color="C3", marker="s")),
         ("random", "random", dict(color="0.6", marker="x", ls="--")),
     ]),
     ("meta-llama/Llama-3.1-8B-Instruct", "Llama-3.1-8B-Instruct", [
         ("own", "single-site", dict(color="C0", marker="o")),
-        ("own_band", "band", dict(color="C3", marker="s")),
+        ("band_own_L18-26", "band (L18-26)", dict(color="C3", marker="s")),
         ("random", "random", dict(color="0.6", marker="x", ls="--")),
     ]),
     ("gpt2-large", "GPT-2-large", [

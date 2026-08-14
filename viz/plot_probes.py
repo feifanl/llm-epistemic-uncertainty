@@ -55,7 +55,7 @@ def curve_and_heatmap(csv):
     ax.axhline(0.5, color="gray", ls=":", lw=1, label="chance")
     ax.set_xlabel("layer"); ax.set_ylabel("accuracy")
     ax.set_ylim(0.4, 1.02)
-    ax.set_title(f"{model} | {csv.stem} — pos={last_pos}")
+    ax.set_title(f"{model} | {csv.stem}, pos={last_pos}")
     ax.legend(fontsize=8)
     fig.tight_layout()
     out = out_dir / f"{csv.stem}_curve.png"
@@ -76,7 +76,7 @@ def curve_and_heatmap(csv):
         ax.set_xlabel("layer"); ax.set_ylabel("pos")
         ax.set_title(f"{d}_test")
         fig.colorbar(im, ax=ax, fraction=0.046)
-    fig.suptitle(f"{model} | {csv.stem} — accuracy heatmap")
+    fig.suptitle(f"{model} | {csv.stem}, accuracy heatmap")
     fig.tight_layout()
     out = out_dir / f"{csv.stem}_heatmap.png"
     fig.savefig(out, dpi=150); plt.close(fig)

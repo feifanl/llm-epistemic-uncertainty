@@ -68,11 +68,11 @@ def main():
         ha, ea = g.loc[best, "hard"], g.loc[best, "easy"]
         print(f"\nbest HARD layer {best}: hard={ha:.3f} easy={ea:.3f} chance={chance}")
         if ha - chance > 0.15 and (ea - ha) < 0.15:
-            print("VERDICT: GENUINE — probe solves text-unsolvable items. Confound does not bite.")
+            print("VERDICT: GENUINE, probe solves text-unsolvable items. Confound does not bite.")
         elif ha - chance < 0.08:
-            print("VERDICT: CONFOUND — probe ~chance on hard items, only works where text works.")
+            print("VERDICT: CONFOUND, probe ~chance on hard items, only works where text works.")
         else:
-            print("VERDICT: PARTIAL — probe adds signal on hard items but weaker than easy.")
+            print("VERDICT: PARTIAL, probe adds signal on hard items but weaker than easy.")
 
     out = args.perprompt.with_name(args.perprompt.stem + "_easyhard.csv")
     g.to_csv(out)

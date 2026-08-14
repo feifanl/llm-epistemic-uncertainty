@@ -1,0 +1,9 @@
+{
+  "source_model": "google/gemma-2-9b-it",
+  "layer": 20,
+  "point": "resid",
+  "pos": 4,
+  "method": "diffmean",
+  "d_model": 3584,
+  "norm": 47.132198333740234
+}

@@ -32,7 +32,7 @@ def train_logreg(X, y, lr=0.1, epochs=300, l2=1e-3, verbose=False):
     """
     Hand-rolled binary logistic regression via full-batch gradient descent.
 
-    X: [N, D] activations (ASSUMED already standardized — see standardize()).
+    X: [N, D] activations (ASSUMED already standardized, see standardize()).
     y: [N]   labels in {0, 1}.
 
     Model:   p = sigmoid(X @ w + b)              # predicted P(y=1)
@@ -165,7 +165,7 @@ def run(acts_dir, point, positions, meta, mode, dump_preds=False, auroc=False,
     """
     directions, y = make_masks(meta, mode)
     layers = discover_layers(acts_dir, point)
-    print(f"Probe [{mode}] {point} — {len(layers)} layers × {len(positions)} pos "
+    print(f"Probe [{mode}] {point}, {len(layers)} layers × {len(positions)} pos "
           f"× {len(directions)} dir")
 
     rows = []

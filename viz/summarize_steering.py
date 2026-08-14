@@ -1,7 +1,7 @@
 """
 Aggregate per-run steering CSVs into one cross-model comparison.
 
-steer.py writes steering_results/{model_slug}__{experiment}.csv per run, one row
+steer.py writes steering_results/judge_qwen/{model_slug}__{experiment}.csv per run, one row
 per (question, alpha). judge_confidence.py optionally adds a `confidence` column.
 This rolls every run up into, for each metric present:
 
@@ -18,7 +18,7 @@ Only `add`-mode rows feed the tables (steering); ablate rows skipped here.
 
 Usage:
     python viz/summarize_steering.py
-    python viz/summarize_steering.py --results steering_results/ --mode add
+    python viz/summarize_steering.py --results steering_results/judge_qwen/ --mode add
 """
 import argparse
 from pathlib import Path
@@ -151,7 +151,7 @@ def heatmap(piv: pd.DataFrame, metric: str, out: Path):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--results", type=Path, default=Path("steering_results"))
+    p.add_argument("--results", type=Path, default=Path("steering_results/judge_qwen"))
     p.add_argument("--mode", default="add", choices=["add", "ablate", "all"])
     p.add_argument("--alpha-max", type=float, default=None,
                    help="Drop |alpha| > this before computing trends/tables. Use to "
