@@ -10,7 +10,8 @@ Interestingly, steering a model via its decoded direction affects its expressed
 confidence in only some model families. This repository contains our results and
 the code to replicate our experiments.
 
-Pre-print: [`paper/main.tex`](paper/main.tex).
+Pre-print: **[read the PDF](paper/main.pdf)** — LaTeX source in
+[`paper/main.tex`](paper/main.tex).
 Authors: Feifan Liu (UT Austin), advised by Dr. Amin Alipour (University of Houston).
 
 ## Findings
